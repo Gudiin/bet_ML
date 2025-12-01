@@ -1,0 +1,9 @@
+playwright
+pandas
+scikit-learn
+joblib
+scipy
+tabulate
+flask
+xgboost
+lightgbm

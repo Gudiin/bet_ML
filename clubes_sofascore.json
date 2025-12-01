@@ -1,0 +1,648 @@
+{
+  "competicoes": [
+    {
+      "torneio": "Brasileirão Série A",
+      "clubes": [
+        {
+          "nome": "1\nFlamengo\n35\n22\n8\n5\n+50\n73:23\nD\nW\nW\nL\nW\n74",
+          "link": "https://www.sofascore.com/football/team/flamengo/5981"
+        },
+        {
+          "nome": "10\nCorinthians\n35\n12\n9\n14\n-4\n38:42\nW\nL\nL\nW\nL\n45",
+          "link": "https://www.sofascore.com/football/team/corinthians/1957"
+        },
+        {
+          "nome": "11\nAtlético-MG\n34\n11\n11\n12\n-2\n37:39\nD\nW\nW\nD\nL\n44",
+          "link": "https://www.sofascore.com/football/team/atletico-mineiro/1977"
+        },
+        {
+          "nome": "12\nGrêmio\n35\n11\n10\n14\n-7\n39:46\nL\nL\nD\nW\nL\n43",
+          "link": "https://www.sofascore.com/football/team/gremio/5926"
+        },
+        {
+          "nome": "13\nVasco\n35\n12\n6\n17\n-2\n50:52\nL\nL\nL\nL\nL\n42",
+          "link": "https://www.sofascore.com/football/team/vasco-da-gama/1974"
+        },
+        {
+          "nome": "14\nCeará\n35\n11\n9\n15\n-3\n32:35\nW\nD\nW\nL\nL\n42",
+          "link": "https://www.sofascore.com/football/team/ceara/2001"
+        },
+        {
+          "nome": "15\nInternacional\n35\n10\n11\n14\n-8\n40:48\nL\nD\nL\nD\nW\n41",
+          "link": "https://www.sofascore.com/football/team/internacional/1966"
+        },
+        {
+          "nome": "16\nVitória\n35\n9\n12\n14\n-16\n32:48\nL\nW\nD\nD\nW\n39",
+          "link": "https://www.sofascore.com/football/team/vitoria/1962"
+        },
+        {
+          "nome": "17\nSantos\n35\n9\n11\n15\n-14\n36:50\nD\nL\nL\nW\nD\n38",
+          "link": "https://www.sofascore.com/football/team/santos/1968"
+        },
+        {
+          "nome": "18\nFortaleza\n34\n8\n10\n16\n-16\n37:53\nD\nD\nD\nD\nW\n34",
+          "link": "https://www.sofascore.com/football/team/fortaleza/2020"
+        },
+        {
+          "nome": "19\nJuventude\n35\n9\n6\n20\n-31\n33:64\nL\nW\nW\nD\nL\n33",
+          "link": "https://www.sofascore.com/football/team/juventude/1980"
+        },
+        {
+          "nome": "2\nPalmeiras\n35\n21\n7\n7\n+29\n58:29\nW\nL\nL\nD\nD\n70",
+          "link": "https://www.sofascore.com/football/team/palmeiras/1963"
+        },
+        {
+          "nome": "20\nSport\n35\n2\n11\n22\n-38\n28:66\nL\nL\nL\nL\nL\n17",
+          "link": "https://www.sofascore.com/football/team/sport-recife/1959"
+        },
+        {
+          "nome": "3\nCruzeiro\n35\n19\n11\n5\n+27\n52:25\nW\nW\nD\nD\nW\n68",
+          "link": "https://www.sofascore.com/football/team/cruzeiro/1954"
+        },
+        {
+          "nome": "4\nMirassol\n35\n17\n12\n6\n+24\n58:34\nD\nL\nW\nD\nW\n63",
+          "link": "https://www.sofascore.com/football/team/mirassol/21982"
+        },
+        {
+          "nome": "5\nBotafogo\n35\n16\n10\n9\n+18\n50:32\nD\nW\nD\nW\nW\n58",
+          "link": "https://www.sofascore.com/football/team/botafogo/1958"
+        },
+        {
+          "nome": "6\nBahia\n35\n16\n8\n11\n+4\n47:43\nW\nL\nD\nL\nW\n56",
+          "link": "https://www.sofascore.com/football/team/bahia/1955"
+        },
+        {
+          "nome": "7\nFluminense\n35\n16\n7\n12\n+2\n40:38\nL\nW\nD\nW\nD\n55",
+          "link": "https://www.sofascore.com/football/team/fluminense/1961"
+        },
+        {
+          "nome": "8\nSão Paulo\n35\n13\n9\n13\n0\n40:40\nW\nD\nL\nL\nW\n48",
+          "link": "https://www.sofascore.com/football/team/sao-paulo/1981"
+        },
+        {
+          "nome": "9\nRB Bragantino\n35\n13\n6\n16\n-13\n40:53\nL\nW\nW\nW\nL\n45",
+          "link": "https://www.sofascore.com/football/team/red-bull-bragantino/1999"
+        }
+      ]
+    },
+    {
+      "torneio": "Brasileirão Série B",
+      "clubes": [
+        {
+          "nome": "1\nCoritiba\n38\n19\n11\n8\n+16\n39:23\nW\nD\nW\nD\nW\n68",
+          "link": "https://www.sofascore.com/football/team/coritiba/1982"
+        },
+        {
+          "nome": "10\nCuiabá\n38\n14\n12\n12\n-1\n43:44\nL\nL\nL\nD\nW\n54",
+          "link": "https://www.sofascore.com/football/team/cuiaba/49202"
+        },
+        {
+          "nome": "11\nAtlético-GO\n38\n13\n13\n12\n+1\n39:38\nL\nW\nL\nD\nL\n52",
+          "link": "https://www.sofascore.com/football/team/atletico-goianiense/7314"
+        },
+        {
+          "nome": "12\nOperário-PR\n38\n12\n12\n14\n-4\n40:44\nL\nD\nD\nD\nW\n48",
+          "link": "https://www.sofascore.com/football/team/operario-pr/39634"
+        },
+        {
+          "nome": "13\nVila Nova\n38\n11\n14\n13\n-4\n40:44\nD\nD\nD\nL\nD\n47",
+          "link": "https://www.sofascore.com/football/team/vila-nova/2021"
+        },
+        {
+          "nome": "14\nAmérica-MG\n38\n12\n10\n16\n-3\n41:44\nW\nD\nW\nD\nL\n46",
+          "link": "https://www.sofascore.com/football/team/america-mineiro/1973"
+        },
+        {
+          "nome": "15\nAthletic\n38\n12\n8\n18\n-10\n43:53\nL\nL\nW\nD\nW\n44",
+          "link": "https://www.sofascore.com/football/team/athletic-club/342775"
+        },
+        {
+          "nome": "16\nBotafogo-SP\n38\n10\n12\n16\n-20\n32:52\nD\nW\nW\nL\nD\n42",
+          "link": "https://www.sofascore.com/football/team/botafogo-sp/1979"
+        },
+        {
+          "nome": "17\nFerroviária\n38\n8\n16\n14\n-9\n43:52\nD\nD\nL\nL\nL\n40",
+          "link": "https://www.sofascore.com/football/team/ferroviaria/35285"
+        },
+        {
+          "nome": "18\nAmazonas\n38\n8\n12\n18\n-17\n38:55\nL\nW\nL\nD\nL\n36",
+          "link": "https://www.sofascore.com/football/team/amazonas-fc/336664"
+        },
+        {
+          "nome": "19\nVolta Redonda\n38\n8\n12\n18\n-17\n26:43\nL\nL\nL\nD\nD\n36",
+          "link": "https://www.sofascore.com/football/team/volta-redonda/6982"
+        },
+        {
+          "nome": "2\nAthletico\n38\n19\n8\n11\n+10\n53:43\nW\nW\nW\nW\nW\n65",
+          "link": "https://www.sofascore.com/football/team/athletico/1967"
+        },
+        {
+          "nome": "20\nPaysandu\n38\n5\n13\n20\n-16\n36:52\nL\nL\nL\nD\nL\n28",
+          "link": "https://www.sofascore.com/football/team/paysandu-sc/1997"
+        },
+        {
+          "nome": "3\nChapecoense\n38\n18\n8\n12\n+17\n52:35\nW\nD\nL\nD\nW\n62",
+          "link": "https://www.sofascore.com/football/team/chapecoense/21845"
+        },
+        {
+          "nome": "4\nRemo\n38\n16\n14\n8\n+12\n51:39\nW\nD\nD\nL\nW\n62",
+          "link": "https://www.sofascore.com/football/team/remo/2012"
+        },
+        {
+          "nome": "5\nCriciúma\n38\n17\n10\n11\n+14\n47:33\nL\nD\nW\nW\nL\n61",
+          "link": "https://www.sofascore.com/football/team/criciuma/1984"
+        },
+        {
+          "nome": "6\nGoiás\n38\n17\n10\n11\n+5\n42:37\nW\nL\nW\nW\nL\n61",
+          "link": "https://www.sofascore.com/football/team/goias/1960"
+        },
+        {
+          "nome": "7\nNovorizontino\n38\n15\n15\n8\n+11\n43:32\nD\nD\nD\nL\nW\n60",
+          "link": "https://www.sofascore.com/football/team/novorizontino/135514"
+        },
+        {
+          "nome": "8\nCRB\n38\n16\n8\n14\n+5\n45:40\nW\nD\nD\nW\nL\n56",
+          "link": "https://www.sofascore.com/football/team/crb/22032"
+        },
+        {
+          "nome": "9\nAvaí\n38\n14\n14\n10\n+10\n50:40\nW\nW\nD\nW\nD\n56",
+          "link": "https://www.sofascore.com/football/team/avai/7315"
+        }
+      ]
+    },
+    {
+      "torneio": "Premier League",
+      "clubes": [
+        {
+          "nome": "1\nArsenal\n12\n9\n2\n1\n+18\n24:6\nW\nW\nW\nD\nW\n29",
+          "link": "https://www.sofascore.com/football/team/arsenal/42"
+        },
+        {
+          "nome": "10\nMan Utd\n12\n5\n3\n4\n0\n19:19\nW\nW\nD\nD\nL\n18",
+          "link": "https://www.sofascore.com/football/team/manchester-united/35"
+        },
+        {
+          "nome": "11\nEverton\n12\n5\n3\n4\n0\n13:13\nL\nL\nD\nW\nW\n18",
+          "link": "https://www.sofascore.com/football/team/everton/48"
+        },
+        {
+          "nome": "12\nLiverpool\n12\n6\n0\n6\n-2\n18:20\nL\nL\nW\nL\nL\n18",
+          "link": "https://www.sofascore.com/football/team/liverpool/44"
+        },
+        {
+          "nome": "13\nBrentford\n12\n5\n1\n6\n-1\n18:19\nW\nW\nL\nW\nL\n16",
+          "link": "https://www.sofascore.com/football/team/brentford/50"
+        },
+        {
+          "nome": "14\nNewcastle\n12\n4\n3\n5\n-2\n13:15\nL\nW\nL\nL\nW\n15",
+          "link": "https://www.sofascore.com/football/team/newcastle-united/39"
+        },
+        {
+          "nome": "15\nFulham\n12\n4\n2\n6\n-3\n13:16\nL\nL\nW\nL\nW\n14",
+          "link": "https://www.sofascore.com/football/team/fulham/43"
+        },
+        {
+          "nome": "16\nForest\n12\n3\n3\n6\n-7\n13:20\nL\nL\nD\nW\nW\n12",
+          "link": "https://www.sofascore.com/football/team/nottingham-forest/14"
+        },
+        {
+          "nome": "17\nWest Ham\n12\n3\n2\n7\n-10\n15:25\nL\nL\nW\nW\nD\n11",
+          "link": "https://www.sofascore.com/football/team/west-ham-united/37"
+        },
+        {
+          "nome": "18\nLeeds\n12\n3\n2\n7\n-11\n11:22\nL\nW\nL\nL\nL\n11",
+          "link": "https://www.sofascore.com/football/team/leeds-united/34"
+        },
+        {
+          "nome": "19\nBurnley\n12\n3\n1\n8\n-10\n14:24\nW\nW\nL\nL\nL\n10",
+          "link": "https://www.sofascore.com/football/team/burnley/6"
+        },
+        {
+          "nome": "2\nChelsea\n12\n7\n2\n3\n+12\n23:11\nW\nL\nW\nW\nW\n23",
+          "link": "https://www.sofascore.com/football/team/chelsea/38"
+        },
+        {
+          "nome": "20\nWolves\n12\n0\n2\n10\n-20\n7:27\nL\nL\nL\nL\nL\n2",
+          "link": "https://www.sofascore.com/football/team/wolverhampton/3"
+        },
+        {
+          "nome": "3\nMan City\n12\n7\n1\n4\n+14\n24:10\nW\nL\nW\nW\nL\n22",
+          "link": "https://www.sofascore.com/football/team/manchester-city/17"
+        },
+        {
+          "nome": "4\nAston Villa\n12\n6\n3\n3\n+4\n15:11\nW\nW\nL\nW\nW\n21",
+          "link": "https://www.sofascore.com/football/team/aston-villa/40"
+        },
+        {
+          "nome": "5\nCrystal Palace\n12\n5\n5\n2\n+7\n16:9\nD\nL\nW\nD\nW\n20",
+          "link": "https://www.sofascore.com/football/team/crystal-palace/7"
+        },
+        {
+          "nome": "6\nBrighton\n12\n5\n4\n3\n+3\n19:16\nW\nL\nW\nD\nW\n19",
+          "link": "https://www.sofascore.com/football/team/brighton-and-hove-albion/30"
+        },
+        {
+          "nome": "7\nSunderland\n12\n5\n4\n3\n+3\n14:11\nW\nW\nD\nD\nL\n19",
+          "link": "https://www.sofascore.com/football/team/sunderland/41"
+        },
+        {
+          "nome": "8\nBournemouth\n12\n5\n4\n3\n-1\n19:20\nD\nW\nL\nL\nD\n19",
+          "link": "https://www.sofascore.com/football/team/bournemouth/60"
+        },
+        {
+          "nome": "9\nTottenham\n12\n5\n3\n4\n+6\n20:14\nL\nW\nL\nD\nL\n18",
+          "link": "https://www.sofascore.com/football/team/tottenham-hotspur/33"
+        }
+      ]
+    },
+    {
+      "torneio": "La Liga",
+      "clubes": [
+        {
+          "nome": "1\nReal Madrid\n13\n10\n2\n1\n+16\n28:12\nW\nW\nW\nD\nD\n32",
+          "link": "https://www.sofascore.com/football/team/real-madrid/2829"
+        },
+        {
+          "nome": "10\nElche\n13\n3\n7\n3\n-1\n15:16\nD\nL\nL\nD\nD\n16",
+          "link": "https://www.sofascore.com/football/team/elche/2846"
+        },
+        {
+          "nome": "11\nSevilla\n13\n5\n1\n7\n-2\n19:21\nL\nL\nL\nW\nL\n16",
+          "link": "https://www.sofascore.com/football/team/sevilla/2833"
+        },
+        {
+          "nome": "12\nCelta\n13\n3\n7\n3\n-2\n16:18\nD\nW\nW\nL\nW\n16",
+          "link": "https://www.sofascore.com/football/team/celta-vigo/2821"
+        },
+        {
+          "nome": "13\nRayo Vallecano\n13\n4\n4\n5\n-2\n12:14\nW\nW\nL\nD\nD\n16",
+          "link": "https://www.sofascore.com/football/team/rayo-vallecano/2818"
+        },
+        {
+          "nome": "14\nAlavés\n13\n4\n3\n6\n-1\n11:12\nD\nL\nW\nL\nL\n15",
+          "link": "https://www.sofascore.com/football/team/deportivo-alaves/2885"
+        },
+        {
+          "nome": "15\nValencia\n13\n3\n4\n6\n-9\n12:21\nD\nL\nL\nD\nW\n13",
+          "link": "https://www.sofascore.com/football/team/valencia/2828"
+        },
+        {
+          "nome": "16\nMallorca\n13\n3\n3\n7\n-7\n13:20\nW\nD\nL\nW\nL\n12",
+          "link": "https://www.sofascore.com/football/team/mallorca/2826"
+        },
+        {
+          "nome": "17\nOsasuna\n13\n3\n2\n8\n-6\n10:16\nL\nL\nD\nL\nL\n11",
+          "link": "https://www.sofascore.com/football/team/osasuna/2820"
+        },
+        {
+          "nome": "18\nGirona\n13\n2\n5\n6\n-13\n12:25\nL\nD\nL\nW\nD\n11",
+          "link": "https://www.sofascore.com/football/team/girona-fc/24264"
+        },
+        {
+          "nome": "19\nLevante\n13\n2\n3\n8\n-8\n16:24\nL\nD\nL\nL\nL\n9",
+          "link": "https://www.sofascore.com/football/team/levante-ud/2849"
+        },
+        {
+          "nome": "2\nBarcelona\n13\n10\n1\n2\n+21\n36:15\nW\nL\nW\nW\nW\n31",
+          "link": "https://www.sofascore.com/football/team/barcelona/2817"
+        },
+        {
+          "nome": "20\nReal Oviedo\n13\n2\n3\n8\n-13\n7:20\nL\nD\nD\nL\nD\n9",
+          "link": "https://www.sofascore.com/football/team/real-oviedo/2851"
+        },
+        {
+          "nome": "3\nVillarreal\n13\n9\n2\n2\n+15\n26:11\nD\nW\nW\nW\nW\n29",
+          "link": "https://www.sofascore.com/football/team/villarreal/2819"
+        },
+        {
+          "nome": "4\nAtl. Madrid\n13\n8\n4\n1\n+14\n25:11\nW\nW\nW\nW\nW\n28",
+          "link": "https://www.sofascore.com/football/team/atletico-madrid/2836"
+        },
+        {
+          "nome": "5\nReal Betis\n13\n5\n6\n2\n+6\n20:14\nD\nL\nW\nD\nD\n21",
+          "link": "https://www.sofascore.com/football/team/real-betis/2816"
+        },
+        {
+          "nome": "6\nEspanyol\n13\n6\n3\n4\n+1\n17:16\nW\nW\nL\nL\nW\n21",
+          "link": "https://www.sofascore.com/football/team/espanyol/2814"
+        },
+        {
+          "nome": "7\nGetafe\n13\n5\n2\n6\n-3\n12:15\nL\nW\nW\nL\nL\n17",
+          "link": "https://www.sofascore.com/football/team/getafe/2859"
+        },
+        {
+          "nome": "8\nAthletic Club\n13\n5\n2\n6\n-5\n12:17\nD\nL\nL\nW\nL\n17",
+          "link": "https://www.sofascore.com/football/team/athletic-club/2825"
+        },
+        {
+          "nome": "9\nReal Sociedad\n13\n4\n4\n5\n-1\n17:18\nD\nW\nW\nD\nW\n16",
+          "link": "https://www.sofascore.com/football/team/real-sociedad/2824"
+        }
+      ]
+    },
+    {
+      "torneio": "Bundesliga",
+      "clubes": [
+        {
+          "nome": "1\nBayern\n11\n10\n1\n0\n+33\n41:8\nW\nW\nW\nD\nW\n31",
+          "link": "https://www.sofascore.com/football/team/fc-bayern-munchen/2672"
+        },
+        {
+          "nome": "10\nKöln\n11\n4\n2\n5\n+1\n20:19\nD\nL\nW\nL\nL\n14",
+          "link": "https://www.sofascore.com/football/team/1-fc-koln/2671"
+        },
+        {
+          "nome": "11\nFreiburg\n11\n3\n4\n4\n-5\n15:20\nD\nL\nD\nW\nL\n13",
+          "link": "https://www.sofascore.com/football/team/sc-freiburg/2538"
+        },
+        {
+          "nome": "12\nM'gladbach\n11\n3\n3\n5\n-3\n16:19\nL\nL\nW\nW\nW\n12",
+          "link": "https://www.sofascore.com/football/team/borussia-mgladbach/2527"
+        },
+        {
+          "nome": "13\nAugsburg\n11\n3\n1\n7\n-9\n15:24\nD\nL\nL\nL\nW\n10",
+          "link": "https://www.sofascore.com/football/team/fc-augsburg/2600"
+        },
+        {
+          "nome": "14\nHSV\n11\n2\n3\n6\n-8\n9:17\nL\nL\nL\nD\nL\n9",
+          "link": "https://www.sofascore.com/football/team/hamburger-sv/2676"
+        },
+        {
+          "nome": "15\nWolfsburg\n11\n2\n2\n7\n-8\n13:21\nL\nW\nL\nL\nL\n8",
+          "link": "https://www.sofascore.com/football/team/vfl-wolfsburg/2524"
+        },
+        {
+          "nome": "16\nSt. Pauli\n11\n2\n1\n8\n-12\n9:21\nL\nL\nL\nL\nL\n7",
+          "link": "https://www.sofascore.com/football/team/fc-st-pauli/2526"
+        },
+        {
+          "nome": "17\nMainz 05\n11\n1\n3\n7\n-8\n11:19\nL\nL\nD\nL\nD\n6",
+          "link": "https://www.sofascore.com/football/team/1-fsv-mainz-05/2556"
+        },
+        {
+          "nome": "18\nHeidenheim\n11\n1\n2\n8\n-18\n8:26\nD\nL\nD\nL\nL\n5",
+          "link": "https://www.sofascore.com/football/team/1-fc-heidenheim/5885"
+        },
+        {
+          "nome": "2\nLeipzig\n11\n8\n1\n2\n+9\n22:13\nW\nW\nW\nL\nW\n25",
+          "link": "https://www.sofascore.com/football/team/rb-leipzig/36360"
+        },
+        {
+          "nome": "3\nLeverkusen\n11\n7\n2\n2\n+12\n27:15\nW\nW\nL\nW\nW\n23",
+          "link": "https://www.sofascore.com/football/team/bayer-04-leverkusen/2681"
+        },
+        {
+          "nome": "4\nDortmund\n11\n6\n4\n1\n+9\n19:10\nL\nW\nW\nD\nD\n22",
+          "link": "https://www.sofascore.com/football/team/borussia-dortmund/2673"
+        },
+        {
+          "nome": "5\nStuttgart\n11\n7\n1\n3\n+5\n20:15\nW\nW\nL\nW\nD\n22",
+          "link": "https://www.sofascore.com/football/team/vfb-stuttgart/2677"
+        },
+        {
+          "nome": "6\nFrankfurt\n11\n6\n2\n3\n+5\n27:22\nD\nW\nD\nW\nW\n20",
+          "link": "https://www.sofascore.com/football/team/eintracht-frankfurt/2674"
+        },
+        {
+          "nome": "7\nHoffenheim\n11\n6\n2\n3\n+5\n22:17\nW\nW\nW\nW\nD\n20",
+          "link": "https://www.sofascore.com/football/team/tsg-hoffenheim/2569"
+        },
+        {
+          "nome": "8\nUnion Berlin\n11\n4\n3\n4\n-3\n14:17\nW\nL\nD\nD\nW\n15",
+          "link": "https://www.sofascore.com/football/team/1-fc-union-berlin/2547"
+        },
+        {
+          "nome": "9\nBremen\n11\n4\n3\n4\n-5\n15:20\nD\nW\nD\nW\nL\n15",
+          "link": "https://www.sofascore.com/football/team/sv-werder-bremen/2534"
+        }
+      ]
+    },
+    {
+      "torneio": "Serie A 25/26",
+      "clubes": [
+        {
+          "nome": "1\nRoma\n12\n9\n0\n3\n+9\n15:6\nW\nW\nL\nW\nW\n27",
+          "link": "https://www.sofascore.com/football/team/roma/2702"
+        },
+        {
+          "nome": "10\nUdinese\n12\n4\n3\n5\n-8\n12:20\nW\nL\nW\nL\nL\n15",
+          "link": "https://www.sofascore.com/football/team/udinese/2695"
+        },
+        {
+          "nome": "11\nCremonese\n12\n3\n5\n4\n-3\n13:16\nD\nW\nL\nL\nL\n14",
+          "link": "https://www.sofascore.com/football/team/cremonese/2761"
+        },
+        {
+          "nome": "12\nTorino\n12\n3\n5\n4\n-10\n11:21\nW\nD\nD\nD\nL\n14",
+          "link": "https://www.sofascore.com/football/team/torino/2696"
+        },
+        {
+          "nome": "13\nAtalanta\n12\n2\n7\n3\n0\n14:14\nD\nD\nL\nL\nL\n13",
+          "link": "https://www.sofascore.com/football/team/atalanta/2686"
+        },
+        {
+          "nome": "14\nCagliari\n12\n2\n5\n5\n-5\n12:17\nD\nL\nL\nD\nD\n11",
+          "link": "https://www.sofascore.com/football/team/cagliari/2719"
+        },
+        {
+          "nome": "15\nParma\n12\n2\n5\n5\n-6\n9:15\nD\nL\nL\nD\nW\n11",
+          "link": "https://www.sofascore.com/football/team/parma/2690"
+        },
+        {
+          "nome": "16\nPisa\n12\n1\n7\n4\n-6\n10:16\nD\nD\nD\nW\nD\n10",
+          "link": "https://www.sofascore.com/football/team/pisa/2737"
+        },
+        {
+          "nome": "17\nLecce\n12\n2\n4\n6\n-8\n8:16\nL\nL\nW\nD\nL\n10",
+          "link": "https://www.sofascore.com/football/team/lecce/2689"
+        },
+        {
+          "nome": "18\nGenoa\n12\n1\n5\n6\n-8\n11:19\nL\nL\nW\nD\nD\n8",
+          "link": "https://www.sofascore.com/football/team/genoa/2713"
+        },
+        {
+          "nome": "19\nFiorentina\n12\n0\n6\n6\n-9\n10:19\nD\nL\nL\nD\nD\n6",
+          "link": "https://www.sofascore.com/football/team/fiorentina/2693"
+        },
+        {
+          "nome": "2\nMilan\n12\n7\n4\n1\n+9\n18:9\nD\nD\nW\nD\nW\n25",
+          "link": "https://www.sofascore.com/football/team/milan/2692"
+        },
+        {
+          "nome": "20\nVerona\n12\n0\n6\n6\n-11\n7:18\nD\nL\nL\nD\nL\n6",
+          "link": "https://www.sofascore.com/football/team/hellas-verona/2701"
+        },
+        {
+          "nome": "3\nNapoli\n12\n8\n1\n3\n+8\n19:11\nW\nW\nD\nL\nW\n25",
+          "link": "https://www.sofascore.com/football/team/napoli/2714"
+        },
+        {
+          "nome": "4\nInter\n12\n8\n0\n4\n+13\n26:13\nL\nW\nW\nW\nL\n24",
+          "link": "https://www.sofascore.com/football/team/inter/2697"
+        },
+        {
+          "nome": "5\nBologna\n12\n7\n3\n2\n+13\n21:8\nD\nD\nW\nW\nW\n24",
+          "link": "https://www.sofascore.com/football/team/bologna/2685"
+        },
+        {
+          "nome": "6\nComo\n12\n5\n6\n1\n+10\n17:7\nD\nW\nD\nD\nW\n21",
+          "link": "https://www.sofascore.com/football/team/como/2704"
+        },
+        {
+          "nome": "7\nJuventus\n12\n5\n5\n2\n+4\n15:11\nL\nW\nW\nD\nD\n20",
+          "link": "https://www.sofascore.com/football/team/juventus/2687"
+        },
+        {
+          "nome": "8\nLazio\n12\n5\n3\n4\n+6\n15:9\nW\nD\nW\nL\nW\n18",
+          "link": "https://www.sofascore.com/football/team/lazio/2699"
+        },
+        {
+          "nome": "9\nSassuolo\n12\n5\n2\n5\n+2\n16:14\nL\nW\nL\nW\nD\n17",
+          "link": "https://www.sofascore.com/football/team/sassuolo/2793"
+        }
+      ]
+    },
+    {
+      "torneio": "Ligue 1",
+      "clubes": [
+        {
+          "nome": "1\nPSG\n13\n9\n3\n1\n+16\n27:11\nW\nD\nW\nW\nW\n30",
+          "link": "https://www.sofascore.com/football/team/paris-saint-germain/1644"
+        },
+        {
+          "nome": "10\nToulouse\n13\n4\n4\n5\n+1\n18:17\nL\nD\nD\nD\nL\n16",
+          "link": "https://www.sofascore.com/football/team/toulouse/1681"
+        },
+        {
+          "nome": "11\nAngers\n13\n4\n4\n5\n-4\n11:15\nW\nD\nL\nW\nW\n16",
+          "link": "https://www.sofascore.com/football/team/angers/1684"
+        },
+        {
+          "nome": "12\nParis\n13\n4\n2\n7\n-5\n20:25\nL\nD\nW\nL\nL\n14",
+          "link": "https://www.sofascore.com/football/team/paris-fc/6070"
+        },
+        {
+          "nome": "13\nLe Havre\n13\n3\n5\n5\n-7\n13:20\nW\nW\nD\nD\nL\n14",
+          "link": "https://www.sofascore.com/football/team/le-havre/1662"
+        },
+        {
+          "nome": "14\nBrest\n13\n3\n4\n6\n-6\n17:23\nL\nL\nD\nL\nW\n13",
+          "link": "https://www.sofascore.com/football/team/stade-brestois/1715"
+        },
+        {
+          "nome": "15\nNantes\n13\n2\n5\n6\n-7\n12:19\nW\nL\nL\nD\nD\n11",
+          "link": "https://www.sofascore.com/football/team/nantes/1647"
+        },
+        {
+          "nome": "16\nLorient\n13\n2\n5\n6\n-12\n15:27\nL\nD\nL\nD\nD\n11",
+          "link": "https://www.sofascore.com/football/team/lorient/1656"
+        },
+        {
+          "nome": "17\nMetz\n13\n3\n2\n8\n-16\n14:30\nL\nW\nW\nW\nL\n11",
+          "link": "https://www.sofascore.com/football/team/metz/1651"
+        },
+        {
+          "nome": "18\nAuxerre\n13\n2\n2\n9\n-12\n7:19\nL\nL\nL\nL\nD\n8",
+          "link": "https://www.sofascore.com/football/team/auxerre/1646"
+        },
+        {
+          "nome": "2\nMarseille\n13\n9\n1\n3\n+21\n33:12\nL\nD\nW\nW\nW\n28",
+          "link": "https://www.sofascore.com/football/team/olympique-de-marseille/1641"
+        },
+        {
+          "nome": "3\nLens\n13\n9\n1\n3\n+11\n22:11\nW\nL\nW\nW\nW\n28",
+          "link": "https://www.sofascore.com/football/team/rc-lens/1648"
+        },
+        {
+          "nome": "4\nLille\n13\n7\n2\n4\n+10\n27:17\nW\nL\nW\nL\nW\n23",
+          "link": "https://www.sofascore.com/football/team/lille/1643"
+        },
+        {
+          "nome": "5\nStrasbourg\n13\n7\n1\n5\n+7\n24:17\nL\nW\nL\nW\nL\n22",
+          "link": "https://www.sofascore.com/football/team/rc-strasbourg/1659"
+        },
+        {
+          "nome": "6\nRennes\n13\n5\n6\n2\n+5\n23:18\nL\nD\nW\nW\nW\n21",
+          "link": "https://www.sofascore.com/football/team/stade-rennais/1658"
+        },
+        {
+          "nome": "7\nLyon\n13\n6\n3\n4\n+3\n18:15\nW\nD\nD\nL\nD\n21",
+          "link": "https://www.sofascore.com/football/team/olympique-lyonnais/1649"
+        },
+        {
+          "nome": "8\nAS Monaco\n13\n6\n2\n5\n0\n25:25\nW\nW\nL\nL\nL\n20",
+          "link": "https://www.sofascore.com/football/team/as-monaco/1653"
+        },
+        {
+          "nome": "9\nNice\n13\n5\n2\n6\n-5\n18:23\nW\nW\nL\nL\nL\n17",
+          "link": "https://www.sofascore.com/football/team/nice/1661"
+        }
+      ]
+    },
+    {
+      "torneio": "Liga Profesional (Argentina)",
+      "clubes": [
+        {
+          "nome": "1\nBoca Juniors\n16\n8\n5\n3\n+16\n28:12\nL\nW\nW\nW\nW\n29",
+          "link": "https://www.sofascore.com/football/team/boca-juniors/3202"
+        },
+        {
+          "nome": "10\nBelgrano\n16\n4\n8\n4\n+2\n13:11\nD\nW\nD\nL\nD\n20",
+          "link": "https://www.sofascore.com/football/team/belgrano/3203"
+        },
+        {
+          "nome": "11\nHuracán\n16\n5\n5\n6\n-5\n10:15\nL\nL\nW\nL\nD\n20",
+          "link": "https://www.sofascore.com/football/team/huracan/7629"
+        },
+        {
+          "nome": "12\nDef y Justicia\n16\n5\n4\n7\n-5\n14:19\nW\nL\nL\nL\nL\n19",
+          "link": "https://www.sofascore.com/football/team/defensa-y-justicia/36839"
+        },
+        {
+          "nome": "13\nAldosivi\n16\n5\n3\n8\n-5\n13:18\nW\nL\nW\nW\nW\n18",
+          "link": "https://www.sofascore.com/football/team/aldosivi/36836"
+        },
+        {
+          "nome": "14\nInd. Rivadavia\n16\n3\n7\n6\n-3\n14:17\nD\nL\nL\nD\nW\n16",
+          "link": "https://www.sofascore.com/football/team/independiente-rivadavia/36842"
+        },
+        {
+          "nome": "15\nNewell's\n16\n3\n5\n8\n-10\n13:23\nD\nL\nL\nW\nL\n14",
+          "link": "https://www.sofascore.com/football/team/newells-old-boys/3212"
+        },
+        {
+          "nome": "2\nUnión de Santa Fe\n16\n6\n7\n3\n+7\n20:13\nL\nW\nW\nD\nD\n25",
+          "link": "https://www.sofascore.com/football/team/club-atletico-union/3204"
+        },
+        {
+          "nome": "3\nRacing\n16\n7\n4\n5\n+3\n16:13\nW\nW\nD\nW\nW\n25",
+          "link": "https://www.sofascore.com/football/team/racing-club/3215"
+        },
+        {
+          "nome": "4\nCentral Córdoba\n16\n5\n9\n2\n+6\n17:11\nW\nW\nD\nD\nD\n24",
+          "link": "https://www.sofascore.com/football/team/central-cordoba/65676"
+        },
+        {
+          "nome": "5\nArgentinos Jrs.\n16\n7\n3\n6\n+5\n18:13\nL\nW\nL\nW\nW\n24",
+          "link": "https://www.sofascore.com/football/team/argentinos-juniors/3216"
+        },
+        {
+          "nome": "6\nBarracas\n16\n5\n8\n3\n+2\n19:17\nD\nL\nW\nD\nD\n23",
+          "link": "https://www.sofascore.com/football/team/barracas-central/65668"
+        },
+        {
+          "nome": "7\nTigre\n16\n5\n7\n4\n+1\n14:13\nD\nD\nD\nW\nL\n22",
+          "link": "https://www.sofascore.com/football/team/tigre/7628"
+        },
+        {
+          "nome": "8\nEstudiantes\n16\n6\n3\n7\n-1\n17:18\nD\nW\nL\nL\nL\n21",
+          "link": "https://www.sofascore.com/football/team/estudiantes-de-la-plata/3206"
+        },
+        {
+          "nome": "9\nBanfield\n16\n6\n3\n7\n-6\n15:21\nL\nW\nW\nL\nD\n21",
+          "link": "https://www.sofascore.com/football/team/banfield/3219"
+        }
+      ]
+    }
+  ]
+}

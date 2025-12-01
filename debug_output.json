@@ -1,0 +1,294 @@
+{
+  "results": [
+    {
+      "entity": {
+        "id": 325,
+        "name": "Brasileirão Betano",
+        "slug": "brasileirao-serie-a",
+        "userCount": 305136,
+        "category": {
+          "id": 13,
+          "name": "Brazil",
+          "slug": "brazil",
+          "alpha2": "BR",
+          "flag": "brazil",
+          "sport": {
+            "id": 1,
+            "slug": "football",
+            "name": "Football"
+          },
+          "country": {
+            "alpha2": "BR",
+            "name": "Brazil",
+            "slug": "brazil"
+          }
+        },
+        "displayInverseHomeAwayTeams": false,
+        "fieldTranslations": {
+          "nameTranslation": {
+            "ar": "بطولة بيتانو البرازيلية",
+            "hi": "ब्राज़ीलेइराओ बेटानो",
+            "bn": "ব্রাসিলিরাও বেতানো"
+          },
+          "shortNameTranslation": {}
+        },
+        "gender": "M"
+      },
+      "score": 1141133,
+      "type": "uniqueTournament"
+    },
+    {
+      "entity": {
+        "id": 390,
+        "name": "Brasileirão Série B",
+        "slug": "brasileirao-serie-b",
+        "userCount": 73989,
+        "category": {
+          "id": 13,
+          "name": "Brazil",
+          "slug": "brazil",
+          "alpha2": "BR",
+          "flag": "brazil",
+          "sport": {
+            "id": 1,
+            "slug": "football",
+            "name": "Football"
+          },
+          "country": {
+            "alpha2": "BR",
+            "name": "Brazil",
+            "slug": "brazil"
+          }
+        },
+        "displayInverseHomeAwayTeams": false,
+        "fieldTranslations": {
+          "nameTranslation": {
+            "ar": "الدوري البرازيلي الدرجة الثانية",
+            "hi": "ब्राज़ीलेइराओ सेरी बी",
+            "bn": "ব্রাসিলিরাও সিরিজ বি"
+          },
+          "shortNameTranslation": {}
+        },
+        "gender": "M"
+      },
+      "score": 380411.47,
+      "type": "uniqueTournament"
+    },
+    {
+      "entity": {
+        "id": 1281,
+        "name": "Brasileirão Série C",
+        "slug": "brasileirao-serie-c",
+        "userCount": 17518,
+        "category": {
+          "id": 13,
+          "name": "Brazil",
+          "slug": "brazil",
+          "alpha2": "BR",
+          "flag": "brazil",
+          "sport": {
+            "id": 1,
+            "slug": "football",
+            "name": "Football"
+          },
+          "country": {
+            "alpha2": "BR",
+            "name": "Brazil",
+            "slug": "brazil"
+          }
+        },
+        "displayInverseHomeAwayTeams": false,
+        "fieldTranslations": {
+          "nameTranslation": {
+            "ar": "دوري البرازيل الدرجة الثالثة",
+            "hi": "ब्रासीलरियो सीरी सी",
+            "bn": "ব্রাজিলিায়ারো সিরিজ সি"
+          },
+          "shortNameTranslation": {}
+        },
+        "gender": "M"
+      },
+      "score": 184997.95,
+      "type": "uniqueTournament"
+    },
+    {
+      "entity": {
+        "id": 10326,
+        "name": "Brasileirão Série D",
+        "slug": "brasileirao-serie-d",
+        "userCount": 9260,
+        "category": {
+          "id": 13,
+          "name": "Brazil",
+          "slug": "brazil",
+          "alpha2": "BR",
+          "flag": "brazil",
+          "sport": {
+            "id": 1,
+            "slug": "football",
+            "name": "Football"
+          },
+          "country": {
+            "alpha2": "BR",
+            "name": "Brazil",
+            "slug": "brazil"
+          }
+        },
+        "displayInverseHomeAwayTeams": false,
+        "fieldTranslations": {
+          "nameTranslation": {
+            "ar": "دوري الدرجة الرابعة البرازيلي",
+            "hi": "ब्राज़ीलेइराओ सेरी डी",
+            "bn": "ব্রাজিলেইরাও সিরিজ ডি"
+          },
+          "shortNameTranslation": {}
+        },
+        "gender": "M"
+      },
+      "score": 137679.02,
+      "type": "uniqueTournament"
+    },
+    {
+      "entity": {
+        "id": 10257,
+        "name": "Brasileirão Série A1, Feminino ",
+        "slug": "brasileirao-serie-a1-feminino",
+        "userCount": 7782,
+        "category": {
+          "id": 13,
+          "name": "Brazil",
+          "slug": "brazil",
+          "alpha2": "BR",
+          "flag": "brazil",
+          "sport": {
+            "id": 1,
+            "slug": "football",
+            "name": "Football"
+          },
+          "country": {
+            "alpha2": "BR",
+            "name": "Brazil",
+            "slug": "brazil"
+          }
+        },
+        "displayInverseHomeAwayTeams": false,
+        "fieldTranslations": {
+          "nameTranslation": {
+            "ar": "دوري البرازيلي الدرجة الأولى للسيدات",
+            "hi": "ब्रासीलीराओ सेरी A1, फेमिनिनो",
+            "bn": "ব্রাসিলিরাও সিরিজ এ1, উইমেন"
+          },
+          "shortNameTranslation": {}
+        },
+        "gender": "F"
+      },
+      "score": 120561.4,
+      "type": "uniqueTournament"
+    },
+    {
+      "entity": {
+        "id": 14732,
+        "name": "Brasileirão Série A2, Feminino",
+        "slug": "brasileirao-serie-a2-feminino",
+        "userCount": 1695,
+        "category": {
+          "id": 13,
+          "name": "Brazil",
+          "slug": "brazil",
+          "alpha2": "BR",
+          "flag": "brazil",
+          "sport": {
+            "id": 1,
+            "slug": "football",
+            "name": "Football"
+          },
+          "country": {
+            "alpha2": "BR",
+            "name": "Brazil",
+            "slug": "brazil"
+          }
+        },
+        "displayInverseHomeAwayTeams": false,
+        "fieldTranslations": {
+          "nameTranslation": {
+            "ar": "الدوري البرازيلي سيريا A2، للسيدات"
+          },
+          "shortNameTranslation": {}
+        },
+        "gender": "F"
+      },
+      "score": 57107.88,
+      "type": "uniqueTournament"
+    },
+    {
+      "entity": {
+        "id": 22272,
+        "name": "Brasileirão Série A3, Feminino",
+        "slug": "brasileirao-serie-a3-feminino",
+        "userCount": 508,
+        "category": {
+          "id": 13,
+          "name": "Brazil",
+          "slug": "brazil",
+          "alpha2": "BR",
+          "flag": "brazil",
+          "sport": {
+            "id": 1,
+            "slug": "football",
+            "name": "Football"
+          },
+          "country": {
+            "alpha2": "BR",
+            "name": "Brazil",
+            "slug": "brazil"
+          }
+        },
+        "displayInverseHomeAwayTeams": false,
+        "fieldTranslations": {
+          "nameTranslation": {
+            "ar": "الدوري البرازيلي السلسلة A3، للسيدات"
+          },
+          "shortNameTranslation": {}
+        },
+        "gender": "F"
+      },
+      "score": 31997.371,
+      "type": "uniqueTournament"
+    },
+    {
+      "entity": {
+        "id": 25648,
+        "name": "Brasileirão da Baixada",
+        "slug": "brasileirao-da-baixada",
+        "userCount": 111,
+        "category": {
+          "id": 1694,
+          "name": "Brazil Amateur",
+          "slug": "brazil-amateur",
+          "alpha2": "BR",
+          "flag": "brazil",
+          "sport": {
+            "id": 1,
+            "slug": "football",
+            "name": "Football"
+          },
+          "country": {
+            "alpha2": "BR",
+            "name": "Brazil",
+            "slug": "brazil"
+          }
+        },
+        "displayInverseHomeAwayTeams": false,
+        "fieldTranslations": {
+          "nameTranslation": {
+            "ar": "البرازيليراو دا بايكسادا"
+          },
+          "shortNameTranslation": {}
+        },
+        "gender": "M"
+      },
+      "score": 14407.031,
+      "type": "uniqueTournament"
+    }
+  ]
+}

@@ -1,0 +1,1737 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🎯 Sistema de Previsão de Escanteios</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <!-- Bootstrap Icons -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"
+      rel="stylesheet"
+    />
+    <!-- Google Fonts -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root {
+        --bg-dark: #0d1117;
+        --bg-card: #161b22;
+        --bg-card-hover: #1c2128;
+        --border-color: #30363d;
+        --text-primary: #f0f6fc; /* Mais claro para melhor contraste */
+        --text-secondary: #8b949e;
+        --accent-green: #238636; /* Verde GitHub mais legível */
+        --accent-blue: #58a6ff;
+        --accent-yellow: #d29922;
+        --accent-red: #da3633;
+        --accent-purple: #a371f7;
+        --input-bg: #0d1117;
+        --input-border: #30363d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Inter", sans-serif;
+        background: var(--bg-dark);
+        color: var(--text-primary);
+        min-height: 100vh;
+        line-height: 1.6;
+      }
+
+      /* Navbar */
+      .navbar {
+        background: var(--bg-card) !important;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .navbar-brand {
+        font-weight: 700;
+        font-size: 1.3rem;
+        color: var(--text-primary) !important;
+      }
+
+      /* Cards */
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .card-header {
+        background: rgba(255, 255, 255, 0.02);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        color: var(--text-primary) !important;
+        padding: 1rem;
+      }
+      
+      .card-body {
+        color: var(--text-primary);
+      }
+
+      /* Buttons */
+      .btn-primary {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #ffffff;
+        font-weight: 600;
+      }
+
+      .btn-primary:hover {
+        background: #0a58ca;
+        border-color: #0a58ca;
+      }
+
+      .btn-success {
+        background: var(--accent-green);
+        border-color: var(--accent-green);
+        color: #ffffff;
+      }
+
+      .btn-warning {
+        background: var(--accent-yellow);
+        border-color: var(--accent-yellow);
+        color: #000;
+        font-weight: 600;
+      }
+
+      .btn-outline-secondary {
+        color: var(--text-secondary);
+        border-color: var(--border-color);
+      }
+
+      .btn-outline-secondary:hover {
+        background: var(--bg-card-hover);
+        color: var(--text-primary);
+        border-color: var(--text-secondary);
+      }
+
+      /* Terminal/Logs */
+      .terminal {
+        background: #010409;
+        border-radius: 8px;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.9rem;
+        height: 400px;
+        overflow-y: auto;
+        padding: 15px;
+        border: 1px solid var(--border-color);
+        color: #e6edf3;
+      }
+
+      .terminal::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .terminal::-webkit-scrollbar-track {
+        background: #0d1117;
+      }
+
+      .terminal::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 4px;
+      }
+
+      .log-entry {
+        margin-bottom: 6px;
+        line-height: 1.5;
+        border-bottom: 1px solid rgba(48, 54, 61, 0.3);
+        padding-bottom: 2px;
+      }
+
+      .log-timestamp {
+        color: #8b949e;
+        margin-right: 10px;
+        font-size: 0.8em;
+      }
+
+      .log-info { color: #e6edf3; }
+      .log-success { color: #3fb950; font-weight: 500; }
+      .log-error { color: #f85149; font-weight: bold; }
+      .log-warning { color: #d29922; }
+      .log-highlight { color: #a371f7; font-weight: bold; }
+
+      /* Form Controls - High Contrast */
+      .form-label {
+        color: var(--text-primary);
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+      }
+
+      .form-control,
+      .form-select {
+        background-color: #010409 !important;
+        border: 1px solid var(--border-color) !important;
+        color: #e6edf3 !important;
+        font-size: 1rem;
+        padding: 0.75rem;
+      }
+
+      .form-control:focus,
+      .form-select:focus {
+        background-color: #010409 !important;
+        border-color: var(--accent-blue) !important;
+        color: #e6edf3 !important;
+        box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+      }
+
+      .form-control::placeholder {
+        color: #6e7681;
+      }
+      
+      /* Select Options Visibility */
+      select option {
+        background-color: #161b22;
+        color: #e6edf3;
+        padding: 10px;
+      }
+
+      .form-check-input {
+        background-color: #010409;
+        border-color: var(--border-color);
+        width: 1.2em;
+        height: 1.2em;
+      }
+
+      .form-check-input:checked {
+        background-color: var(--accent-blue);
+        border-color: var(--accent-blue);
+      }
+      
+      .form-check-label {
+        color: var(--text-primary);
+        margin-left: 0.5rem;
+      }
+
+      /* Stats Cards */
+      .stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        transition: transform 0.2s, border-color 0.2s;
+      }
+
+      .stat-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--accent-blue);
+      }
+
+      .stat-value {
+        font-size: 2.2rem;
+        font-weight: 800;
+        color: var(--accent-blue);
+        text-shadow: 0 0 10px rgba(88, 166, 255, 0.2);
+      }
+
+      .stat-label {
+        color: var(--text-secondary);
+        font-size: 0.95rem;
+        font-weight: 500;
+        margin-top: 5px;
+      }
+
+      /* Progress */
+      .progress {
+        background: var(--bg-dark);
+        border-radius: 8px;
+        height: 12px;
+        border: 1px solid var(--border-color);
+      }
+
+      .progress-bar {
+        background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+        border-radius: 6px;
+      }
+
+      /* Tables - High Contrast */
+      .table {
+        color: var(--text-primary);
+        --bs-table-bg: transparent;
+        --bs-table-border-color: var(--border-color);
+      }
+      
+      .table thead th {
+        background: #010409;
+        border-bottom: 2px solid var(--border-color);
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        letter-spacing: 0.5px;
+        color: var(--text-secondary);
+        padding: 1rem;
+      }
+      
+      .table td {
+        border-color: var(--border-color);
+        vertical-align: middle;
+        color: var(--text-primary);
+        padding: 1rem;
+        font-size: 0.95rem;
+      }
+      
+      .table-hover tbody tr:hover {
+        background-color: rgba(88, 166, 255, 0.1);
+      }
+
+      /* Badges */
+      .badge {
+        padding: 0.5em 0.8em;
+        font-weight: 600;
+        font-size: 0.85rem;
+        border-radius: 6px;
+      }
+      
+      .badge-over { background: #238636; color: #fff; -webkit-text-fill-color: #fff; }
+      .badge-under { background: #1f6feb; color: #fff; -webkit-text-fill-color: #fff; }
+      .badge-neutral { background: #6e7681; color: #fff; -webkit-text-fill-color: #fff; }
+
+      .badge-easy { background: #238636; color: #fff; border: 1px solid rgba(255,255,255,0.2); -webkit-text-fill-color: #fff; }
+      .badge-medium { background: #d29922; color: #000; border: 1px solid rgba(0,0,0,0.1); -webkit-text-fill-color: #000; }
+      .badge-hard { background: #da3633; color: #fff; border: 1px solid rgba(255,255,255,0.2); -webkit-text-fill-color: #fff; }
+
+      /* Status Indicator */
+      .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+      }
+
+      .status-idle { background: #6e7681; box-shadow: 0 0 5px #6e7681; }
+      .status-running { background: #3fb950; box-shadow: 0 0 8px #3fb950; animation: pulse 1.5s infinite; }
+
+      @keyframes pulse {
+        0% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.7; transform: scale(1.1); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+
+      /* Tabs */
+      .nav-tabs {
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .nav-tabs .nav-link {
+        color: var(--text-secondary);
+        border: none;
+        padding: 12px 24px;
+        font-weight: 600;
+        transition: all 0.2s;
+      }
+
+      .nav-tabs .nav-link:hover {
+        color: var(--text-primary);
+        background: rgba(255,255,255,0.05);
+        border-radius: 6px 6px 0 0;
+      }
+
+      .nav-tabs .nav-link.active {
+        background: transparent;
+        color: var(--accent-blue);
+        border-bottom: 3px solid var(--accent-blue);
+      }
+
+      /* Modals */
+      .modal-content {
+        background: #161b22;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 15px 30px rgba(0,0,0,0.5);
+      }
+      
+      .modal-header {
+        border-bottom: 1px solid var(--border-color);
+        background: #0d1117;
+      }
+      
+      .modal-title {
+        color: var(--text-primary);
+        font-weight: 700;
+      }
+      
+      .modal-body {
+        color: var(--text-primary);
+        background: #161b22;
+      }
+      
+      .modal-footer {
+        border-top: 1px solid var(--border-color);
+        background: #0d1117;
+      }
+      
+      .btn-close-white {
+        filter: invert(1) grayscale(100%) brightness(200%);
+      }
+
+      /* Analysis Results */
+      .result-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      }
+
+      .result-card.highlight {
+        border: 2px solid var(--accent-purple);
+        background: rgba(163, 113, 247, 0.05);
+      }
+
+      .ml-prediction {
+        font-size: 3.5rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #58a6ff, #a371f7);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        text-shadow: 0 0 30px rgba(88, 166, 255, 0.1);
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .terminal { height: 300px; }
+        .stat-value { font-size: 1.8rem; }
+        .ml-prediction { font-size: 2.5rem; }
+      }
+
+      /* Config Section */
+      .config-section {
+        background: #010409;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+      }
+
+      .config-section h6 {
+        color: var(--accent-blue);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-weight: 700;
+        margin-bottom: 15px;
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">
+          <i class="bi bi-bullseye me-2"></i>Previsão de Escanteios
+        </a>
+        <div class="d-flex align-items-center">
+          <span
+            id="statusIndicator"
+            class="status-indicator status-idle"
+          ></span>
+          <span id="statusText" class="text-secondary me-3">Aguardando</span>
+          <button
+            class="btn btn-outline-secondary btn-sm"
+            data-bs-toggle="modal"
+            data-bs-target="#configModal"
+          >
+            <i class="bi bi-gear"></i>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+      <div class="row">
+        <!-- Sidebar / Controls -->
+        <div class="col-lg-3 mb-4">
+          <!-- Quick Actions -->
+          <div class="card mb-4">
+            <div style="color: white !important" class="card-header">
+              <i class="bi bi-lightning-charge me-2"></i>Ações Rápidas
+            </div>
+            <div class="card-body">
+              <div class="d-grid gap-2">
+                <button
+                  id="btnUpdateDB"
+                  class="btn btn-primary"
+                  onclick="updateDatabase()"
+                >
+                  <i class="bi bi-cloud-download me-2"></i>Atualizar Banco
+                </button>
+                <button
+                  id="btnTrain"
+                  class="btn btn-success"
+                  onclick="trainModel()"
+                >
+                  <i class="bi bi-cpu me-2"></i>Treinar Modelo
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Update Match -->
+          <div class="card mb-4">
+            <div class="card-header">
+              <i class="bi bi-arrow-repeat me-2"></i>Atualizar Jogo
+            </div>
+            <div class="card-body">
+              <div class="input-group">
+                <input type="text" id="updateUrlInput" class="form-control" placeholder="URL ou ID do Jogo">
+                <button class="btn btn-outline-primary" type="button" onclick="updateMatch()">
+                  <i class="bi bi-arrow-repeat"></i>
+                </button>
+              </div>
+              <div class="form-text text-secondary mt-2">
+                Atualize dados e valide apostas de um jogo específico.
+              </div>
+            </div>
+          </div>
+
+          <!-- Analyze Match -->
+          <div class="card mb-4">
+            <div class="card-header">
+              <i class="bi bi-search me-2"></i>Analisar Partida
+            </div>
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label small text-secondary"
+                  >URL ou ID do Jogo</label
+                >
+                <input
+                  type="text"
+                  id="matchUrl"
+                  class="form-control"
+                  placeholder="https://sofascore.com/...id:12345"
+                />
+              </div>
+              <button
+                id="btnAnalyze"
+                class="btn btn-warning w-100"
+                onclick="analyzeMatch()"
+              >
+                <i class="bi bi-bar-chart me-2"></i>Analisar
+              </button>
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <div class="card">
+            <div class="card-header">
+              <i class="bi bi-graph-up me-2"></i>Estatísticas
+            </div>
+            <div class="card-body">
+              <div class="row g-2">
+                <div class="col-6">
+                  <div class="stat-card">
+                    <div class="stat-value" id="statMatches">-</div>
+                    <div class="stat-label">Jogos</div>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="stat-card">
+                    <div class="stat-value" id="statPredictions">-</div>
+                    <div class="stat-label">Previsões</div>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="stat-card">
+                    <div class="stat-value" id="statAccuracy">-</div>
+                    <div class="stat-label">Taxa de Acerto</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9">
+          <!-- Progress Bar (hidden by default) -->
+          <div id="progressContainer" class="mb-4" style="display: none">
+            <div class="card">
+              <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                  <span id="progressTask">Processando...</span>
+                  <span id="progressPercent">0%</span>
+                </div>
+                <div class="progress">
+                  <div
+                    id="progressBar"
+                    class="progress-bar"
+                    role="progressbar"
+                    style="width: 0%"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabs -->
+          <ul class="nav nav-tabs mb-4" role="tablist">
+            <li class="nav-item">
+              <button
+                class="nav-link active"
+                data-bs-toggle="tab"
+                data-bs-target="#tabLogs"
+              >
+                <i class="bi bi-terminal me-2"></i>Logs
+              </button>
+            </li>
+            <li class="nav-item">
+              <button
+                class="nav-link"
+                data-bs-toggle="tab"
+                data-bs-target="#tabResults"
+              >
+                <i class="bi bi-trophy me-2"></i>Resultados
+              </button>
+            </li>
+            <li class="nav-item">
+              <button
+                class="nav-link"
+                data-bs-toggle="tab"
+                data-bs-target="#tabHistory"
+              >
+                <i class="bi bi-clock-history me-2"></i>Histórico
+              </button>
+            </li>
+          </ul>
+
+          <div class="tab-content">
+            <!-- Logs Tab -->
+            <div class="tab-pane fade show active" id="tabLogs">
+              <div class="card">
+                <div
+                  class="card-header d-flex justify-content-between align-items-center"
+                >
+                  <span
+                    ><i class="bi bi-terminal me-2"></i>Console de
+                    Execução</span
+                  >
+                  <button
+                    class="btn btn-outline-secondary btn-sm"
+                    onclick="clearLogs()"
+                  >
+                    <i class="bi bi-trash"></i> Limpar
+                  </button>
+                </div>
+                <div class="card-body p-0">
+                  <div id="terminal" class="terminal">
+                    <div class="log-entry">
+                      <span class="log-timestamp">[--:--:--]</span>
+                      <span class="log-info"
+                        >🚀 Sistema pronto. Aguardando comandos...</span
+                      >
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Results Tab -->
+            <div class="tab-pane fade" id="tabResults">
+              <div id="resultsContainer">
+                <div class="text-center text-secondary py-5">
+                  <i class="bi bi-inbox display-1"></i>
+                  <p class="mt-3">
+                    Nenhuma análise realizada ainda.<br />Use o painel lateral
+                    para analisar uma partida.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- History Tab -->
+            <div class="tab-pane fade" id="tabHistory">
+              <div class="card">
+                <div class="card-header">
+                  <i class="bi bi-list-ul me-2"></i>Análises Anteriores
+                </div>
+                <div class="card-body p-0">
+                  <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                      <thead>
+                        <tr>
+                          <th>Jogo</th>
+                          <th>Placar</th>
+                          <th>Previsão ML</th>
+                          <th>Análises</th>
+                          <th>Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody id="historyTable">
+                        <tr>
+                          <td
+                            colspan="5"
+                            class="text-center text-secondary py-4"
+                          >
+                            Carregando...
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Update Modal -->
+    <div class="modal fade" id="updateModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content" style="background: var(--bg-card); border-color: var(--border-color)">
+          <div class="modal-header" style="border-color: var(--border-color)">
+            <h5 class="modal-title"><i class="bi bi-cloud-download me-2"></i>Atualizar Banco de Dados</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label">Liga / Competição</label>
+              <select class="form-select" id="leagueSelect">
+                <option value="Brasileirão Série A" selected>Brasileirão Série A</option>
+                <!-- Populated via JS -->
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Temporada</label>
+              <select class="form-select" id="seasonSelect">
+                <option value="2025" selected>2025 (Atual)</option>
+                <option value="2024">2024</option>
+                <option value="2023">2023</option>
+              </select>
+            </div>
+            <div class="alert alert-info small">
+              <i class="bi bi-info-circle me-1"></i>
+              A atualização pode levar alguns minutos dependendo da quantidade de jogos.
+            </div>
+          </div>
+          <div class="modal-footer" style="border-color: var(--border-color)">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="confirmUpdate()">
+              <i class="bi bi-check-lg me-2"></i>Iniciar Atualização
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Train Modal -->
+    <div class="modal fade" id="trainModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content" style="background: var(--bg-card); border-color: var(--border-color)">
+          <div class="modal-header" style="border-color: var(--border-color)">
+            <h5 class="modal-title"><i class="bi bi-cpu me-2"></i>Treinar Modelo de IA</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label">Modo de Treinamento</label>
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="trainMode" id="trainStandard" value="standard" checked>
+                <label class="form-check-label" for="trainStandard">
+                  <strong>Rápido (Padrão)</strong>
+                  <div class="text-secondary small">Treina Random Forest/LightGBM com parâmetros padrão.</div>
+                </label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="trainMode" id="trainOptimized" value="optimized">
+                <label class="form-check-label" for="trainOptimized">
+                  <strong>Otimizado (Recomendado)</strong>
+                  <div class="text-secondary small">Executa Cross-Validation e busca os melhores hiperparâmetros (Mais lento).</div>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" style="border-color: var(--border-color)">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-success" onclick="confirmTrain()">
+              <i class="bi bi-play-fill me-2"></i>Iniciar Treinamento
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Config Modal -->
+    <div class="modal fade" id="configModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div
+          class="modal-content"
+          style="background: var(--bg-card); border-color: var(--border-color)"
+        >
+          <div class="modal-header" style="border-color: var(--border-color)">
+            <h5 class="modal-title">
+              <i class="bi bi-gear me-2"></i>Configurações
+            </h5>
+            <button
+              type="button"
+              class="btn-close btn-close-white"
+              data-bs-dismiss="modal"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <!-- Scraper Config -->
+            <div class="config-section">
+              <h6>Scraper</h6>
+              <div class="form-check form-switch mb-2">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="configHeadless"
+                  checked
+                />
+                <label class="form-check-label" for="configHeadless"
+                  >Modo Headless (sem janela)</label
+                >
+              </div>
+            </div>
+
+            <!-- Model Config -->
+            <div class="config-section">
+              <h6>Modelo de IA</h6>
+              <div class="mb-3">
+                <label class="form-label small">Tipo de Modelo</label>
+                <select class="form-select" id="configModelType">
+                  <option value="lightgbm">LightGBM (Recomendado)</option>
+                  <option value="random_forest">Random Forest</option>
+                  <option value="xgboost">XGBoost</option>
+                </select>
+              </div>
+              <div class="form-check form-switch">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="configImprovedModel"
+                  checked
+                />
+                <label class="form-check-label" for="configImprovedModel"
+                  >Usar modelo melhorado (v2)</label
+                >
+              </div>
+            </div>
+
+            <!-- Monte Carlo Config -->
+            <div class="config-section">
+              <h6>Monte Carlo</h6>
+              <div class="mb-3">
+                <label class="form-label small">Número de Simulações</label>
+                <input
+                  type="number"
+                  class="form-control"
+                  id="configSimulations"
+                  value="10000"
+                  min="1000"
+                  max="100000"
+                  step="1000"
+                />
+              </div>
+              <div class="mb-3">
+                <label class="form-label small">Jogos no Histórico</label>
+                <input
+                  type="number"
+                  class="form-control"
+                  id="configHistoryGames"
+                  value="5"
+                  min="1"
+                  max="20"
+                />
+              </div>
+            </div>
+
+            <!-- Live Update Config -->
+            <div class="config-section">
+              <h6>Atualização Automática</h6>
+              <div class="mb-3">
+                <label class="form-label small">Intervalo de Atualização (minutos)</label>
+                <input
+                  type="number"
+                  class="form-control"
+                  id="configLiveUpdateInterval"
+                  value="5"
+                  min="1"
+                  max="60"
+                  step="1"
+                />
+                <small class="text-secondary">Frequência de verificação de jogos ao vivo</small>
+              </div>
+            </div>
+
+            <!-- Confidence Config -->
+            <div class="config-section">
+              <h6>Filtros</h6>
+              <div class="mb-0">
+                <label class="form-label small">Threshold de Confiança</label>
+                <div class="d-flex align-items-center">
+                  <input
+                    type="range"
+                    class="form-range me-3"
+                    id="configConfidence"
+                    min="0.5"
+                    max="0.9"
+                    step="0.05"
+                    value="0.65"
+                  />
+                  <span id="confidenceValue">65%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" style="border-color: var(--border-color)">
+            <button
+              type="button"
+              class="btn btn-outline-secondary"
+              data-bs-dismiss="modal"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              onclick="saveConfig()"
+            >
+              <i class="bi bi-check-lg me-2"></i>Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+      <div id="toast" class="toast" role="alert">
+        <div class="toast-header">
+          <i class="bi bi-info-circle me-2" id="toastIcon"></i>
+          <strong class="me-auto" id="toastTitle">Notificação</strong>
+          <button
+            type="button"
+            class="btn-close btn-close-white"
+            data-bs-dismiss="toast"
+          ></button>
+        </div>
+        <div class="toast-body" id="toastBody"></div>
+      </div>
+    </div>
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+      // ============================================================
+      // Estado Global
+      // ============================================================
+      let eventSource = null;
+      let isRunning = false;
+      let currentMatchId = null;
+
+      // ============================================================
+      // SSE - Server-Sent Events
+      // ============================================================
+      function connectSSE() {
+        if (eventSource) {
+          eventSource.close();
+        }
+
+        eventSource = new EventSource("/api/logs/stream");
+
+        eventSource.onmessage = function (event) {
+          const data = JSON.parse(event.data);
+
+          if (data.type === "heartbeat") {
+            return; // Ignora heartbeats
+          }
+
+          if (data.type === "progress") {
+            updateProgress(
+              parseInt(data.message.replace("__PROGRESS__", "")),
+              data.task
+            );
+            return;
+          }
+
+          appendLog(data);
+        };
+
+        eventSource.onerror = function () {
+          console.log("SSE connection error, reconnecting...");
+          setTimeout(connectSSE, 3000);
+        };
+      }
+
+      // ============================================================
+      // Logs
+      // ============================================================
+      function appendLog(log) {
+        const terminal = document.getElementById("terminal");
+        const entry = document.createElement("div");
+        entry.className = "log-entry";
+        entry.innerHTML = `
+                <span class="log-timestamp">[${log.timestamp}]</span>
+                <span class="log-${log.type}">${escapeHtml(log.message)}</span>
+            `;
+        terminal.appendChild(entry);
+        terminal.scrollTop = terminal.scrollHeight;
+      }
+
+      function clearLogs() {
+        const terminal = document.getElementById("terminal");
+        terminal.innerHTML = `
+                <div class="log-entry">
+                    <span class="log-timestamp">[${new Date().toLocaleTimeString()}]</span>
+                    <span class="log-info">🗑️ Logs limpos.</span>
+                </div>
+            `;
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // ============================================================
+      // Progress
+      // ============================================================
+      function updateProgress(percent, task) {
+        const container = document.getElementById("progressContainer");
+        const bar = document.getElementById("progressBar");
+        const percentText = document.getElementById("progressPercent");
+        const taskText = document.getElementById("progressTask");
+
+        container.style.display = "block";
+        bar.style.width = percent + "%";
+        percentText.textContent = percent + "%";
+        if (task) {
+          taskText.textContent = task;
+        }
+
+        if (percent >= 100) {
+          setTimeout(() => {
+            container.style.display = "none";
+            bar.style.width = "0%";
+          }, 2000);
+        }
+      }
+
+      function setStatus(running, text) {
+        isRunning = running;
+        const indicator = document.getElementById("statusIndicator");
+        const statusText = document.getElementById("statusText");
+
+        indicator.className =
+          "status-indicator " + (running ? "status-running" : "status-idle");
+        statusText.textContent =
+          text || (running ? "Executando..." : "Aguardando");
+
+        // Disable/enable buttons
+        document
+          .querySelectorAll("#btnUpdateDB, #btnTrain, #btnAnalyze")
+          .forEach((btn) => {
+            btn.disabled = running;
+          });
+      }
+
+      // ============================================================
+      // API Calls
+      // ============================================================
+      function updateDatabase() {
+        if (isRunning) return;
+        new bootstrap.Modal(document.getElementById('updateModal')).show();
+      }
+
+      function confirmUpdate() {
+        const league = document.getElementById('leagueSelect').value;
+        const season = document.getElementById('seasonSelect').value;
+        const modal = bootstrap.Modal.getInstance(document.getElementById('updateModal'));
+        
+        modal.hide();
+        setStatus(true, `Atualizando ${league}...`);
+
+        $.ajax({
+            url: "/api/database/update",
+            method: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({ league_name: league, season_year: season })
+        })
+        .done(function() {
+            showToast("Atualização iniciada", `Atualizando ${league} (${season})`, "info");
+            pollStatus();
+        })
+        .fail(function(xhr) {
+            const error = xhr.responseJSON?.error || "Erro desconhecido";
+            showToast("Erro", error, "error");
+            setStatus(false);
+        });
+      }
+
+      function updateMatch() {
+          const url = document.getElementById('updateUrlInput').value;
+          if (!url) {
+              showToast('Atenção', 'Por favor, insira uma URL ou ID.', 'warning');
+              return;
+          }
+          
+          $.ajax({
+              url: '/api/database/update_match',
+              method: 'POST',
+              contentType: 'application/json',
+              data: JSON.stringify({ url: url })
+          })
+          .done(function() {
+              showToast("Sucesso", "Atualização iniciada!", "success");
+              pollStatus(); // Assuming update_match also triggers a task that needs polling
+          })
+          .fail(function(xhr) {
+              const error = xhr.responseJSON?.error || "Erro desconhecido";
+              showToast("Erro", error, "error");
+          });
+      }
+
+      function trainModel() {
+        if (isRunning) return;
+        new bootstrap.Modal(document.getElementById('trainModal')).show();
+      }
+
+      function confirmTrain() {
+        const mode = document.querySelector('input[name="trainMode"]:checked').value;
+        const modal = bootstrap.Modal.getInstance(document.getElementById('trainModal'));
+        
+        modal.hide();
+        setStatus(true, "Treinando modelo...");
+
+        $.ajax({
+            url: "/api/model/train",
+            method: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({ mode: mode })
+        })
+        .done(function() {
+            showToast("Treinamento iniciado", `Modo: ${mode === 'optimized' ? 'Otimizado' : 'Padrão'}`, "info");
+            pollStatus();
+        })
+        .fail(function(xhr) {
+            const error = xhr.responseJSON?.error || "Erro desconhecido";
+            showToast("Erro", error, "error");
+            setStatus(false);
+        });
+      }
+
+      function analyzeMatch() {
+        if (isRunning) return;
+
+        const url = document.getElementById("matchUrl").value.trim();
+        if (!url) {
+          showToast("Atenção", "Digite a URL ou ID do jogo.", "warning");
+          return;
+        }
+
+        setStatus(true, "Analisando...");
+
+        $.ajax({
+          url: "/api/match/analyze",
+          method: "POST",
+          contentType: "application/json",
+          data: JSON.stringify({ url: url }),
+        })
+          .done(function (response) {
+            currentMatchId = response.match_id;
+            showToast(
+              "Análise iniciada",
+              `Analisando jogo ID: ${response.match_id}`,
+              "info"
+            );
+            pollStatus();
+          })
+          .fail(function (xhr) {
+            const error = xhr.responseJSON?.error || "Erro desconhecido";
+            showToast("Erro", error, "error");
+            setStatus(false);
+          });
+      }
+
+      function pollStatus() {
+        const poll = setInterval(function () {
+          $.get("/api/status").done(function (status) {
+            if (!status.is_running) {
+              clearInterval(poll);
+              setStatus(false);
+
+              // Load results if we just analyzed a match
+              if (currentMatchId) {
+                loadMatchResult(currentMatchId);
+                currentMatchId = null;
+              }
+
+              // Refresh stats and history
+              loadStats();
+              loadHistory();
+            }
+          });
+        }, 1000);
+      }
+
+      // ============================================================
+      // Results
+      // ============================================================
+      function renderMLPrediction(mlPred) {
+        if (!mlPred) {
+          return `
+            <div class="ml-prediction">-</div>
+            <p class="text-secondary mb-0">Previsão ML indisponível</p>
+          `;
+        }
+
+        const pred = mlPred.toFixed(1);
+        let interpretation = '';
+        let badge = '';
+        
+        if (mlPred > 10.5) {
+          interpretation = 'Jogo com MUITOS escanteios';
+          badge = '<span class="badge badge-over ms-2">▲ OVER</span>';
+        } else if (mlPred < 9.5) {
+          interpretation = 'Jogo com POUCOS escanteios';
+          badge = '<span class="badge badge-under ms-2">▼ UNDER</span>';
+        } else {
+          interpretation = 'Jogo EQUILIBRADO';
+          badge = '<span class="badge badge-neutral ms-2">~ NEUTRO</span>';
+        }
+
+        return `
+          <div class="ml-prediction">${pred} ${badge}</div>
+          <p class="text-secondary mb-1"><strong>Total do Jogo (FT)</strong></p>
+          <p class="text-secondary mb-0" style="font-size: 0.85rem;">${interpretation}</p>
+        `;
+      }
+
+      function loadMatchResult(matchId) {
+        $.get(`/api/match/result/${matchId}`)
+          .done(function (data) {
+            renderResults(data);
+            // Switch to results tab
+            document.querySelector('[data-bs-target="#tabResults"]').click();
+          })
+          .fail(function () {
+            showToast(
+              "Erro",
+              "Não foi possível carregar os resultados.",
+              "error"
+            );
+          });
+      }
+
+      function renderResults(data) {
+        const container = document.getElementById("resultsContainer");
+
+        const match = data.match;
+        const matchName = `${match.home_team_name} vs ${match.away_team_name}`;
+
+        let html = `
+                <div class="result-card highlight">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <h4 class="mb-2">⚽ ${matchName}</h4>
+                            <p class="text-secondary mb-0">
+                                ${
+                                  match.status === 'finished'
+                                    ? `Placar: ${match.home_score} x ${match.away_score}`
+                                    : match.status === 'inprogress'
+                                    ? `Ao Vivo: ${match.home_score} x ${match.away_score}`
+                                    : "Aguardando Início"
+                                }
+                            </p>
+                        </div>
+                        <div class="col-md-6 text-md-end">
+                            ${renderMLPrediction(data.ml_prediction)}
+                        </div>
+                    </div>
+                    
+                    ${(match.status === 'finished' || match.status === 'inprogress') && data.stats ? `
+                    <hr class="my-3" style="border-color: rgba(255,255,255,0.1);">
+                    
+                    <!-- Posse de Bola -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between text-secondary small mb-1">
+                            <span>${data.stats.possession_home || 0}%</span>
+                            <span>Posse de Bola</span>
+                            <span>${data.stats.possession_away || 0}%</span>
+                        </div>
+                        <div class="progress" style="height: 6px; background-color: #2d3035;">
+                            <div class="progress-bar bg-primary" role="progressbar" style="width: ${data.stats.possession_home || 0}%"></div>
+                            <div class="progress-bar bg-info" role="progressbar" style="width: ${data.stats.possession_away || 0}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Grid de Estatísticas -->
+                    <div class="row text-center g-3" style="font-size: 0.9rem;">
+                        <!-- Escanteios -->
+                        <div class="col-3">
+                            <small class="text-secondary d-block mb-1">Escanteios</small>
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <span class="fw-bold text-primary">${data.stats.corners_home_ft || 0}</span>
+                                <span class="text-white small">vs</span>
+                                <span class="fw-bold text-info">${data.stats.corners_away_ft || 0}</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Chutes Totais -->
+                        <div class="col-3">
+                            <small class="text-secondary d-block mb-1">Chutes</small>
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <span class="fw-bold text-primary">${data.stats.total_shots_home || 0}</span>
+                                <span class="text-white small">vs</span>
+                                <span class="fw-bold text-info">${data.stats.total_shots_away || 0}</span>
+                            </div>
+                        </div>
+
+                        <!-- Chutes no Gol -->
+                        <div class="col-3">
+                            <small class="text-secondary d-block mb-1">No Gol</small>
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <span class="fw-bold text-primary">${data.stats.shots_ot_home_ft || 0}</span>
+                                <span class="text-white small">vs</span>
+                                <span class="fw-bold text-info">${data.stats.shots_ot_away_ft || 0}</span>
+                            </div>
+                        </div>
+
+                        <!-- Faltas -->
+                        <div class="col-3">
+                            <small class="text-secondary d-block mb-1">Faltas</small>
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <span class="fw-bold text-primary">${data.stats.fouls_home || 0}</span>
+                                <span class="text-white small">vs</span>
+                                <span class="fw-bold text-info">${data.stats.fouls_away || 0}</span>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+                    
+                    <div class="text-center mt-4">
+                        <button class="btn btn-outline-light btn-sm" onclick="updateSingleMatch('${match.match_id}')">
+                            <i class="bi bi-arrow-clockwise me-1"></i> Atualizar Dados
+                        </button>
+                    </div>
+                </div>
+            `;
+
+        // Top 7 Opportunities
+        if (data.top7 && data.top7.length > 0) {
+          html += `
+                    <div class="result-card">
+                        <h5 class="mb-3"><i class="bi bi-trophy me-2 text-warning"></i>Top 7 Oportunidades</h5>
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Mercado</th>
+                                        <th>Linha</th>
+                                        <th>Prob.</th>
+                                        <th>Odd Justa</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                `;
+
+          data.top7.forEach((pick) => {
+            const isOver = pick.market.includes("Over");
+            const badgeClass = isOver ? "badge-over" : "badge-under";
+            const icon = isOver ? "▲" : "▼";
+
+            let statusBadge = "";
+            if (pick.status === "GREEN") {
+              statusBadge = '<span class="badge badge-over">✓ GREEN</span>';
+            } else if (pick.status === "RED") {
+              statusBadge = '<span class="badge badge-hard">✗ RED</span>';
+            } else {
+              statusBadge = '<span class="badge badge-neutral">Pendente</span>';
+            }
+
+            html += `
+                        <tr>
+                            <td>${pick.market_group || "-"}</td>
+                            <td><span class="badge ${badgeClass}">${icon} ${
+              pick.market
+            }</span></td>
+                            <td><strong>${(pick.probability * 100).toFixed(
+                              1
+                            )}%</strong></td>
+                            <td>@${pick.odds.toFixed(2)}</td>
+                            <td>${statusBadge}</td>
+                        </tr>
+                    `;
+          });
+
+          html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+        }
+
+        // Suggestions
+        if (data.suggestions && data.suggestions.length > 0) {
+          html += `
+                    <div class="result-card">
+                        <h5 class="mb-3"><i class="bi bi-lightbulb me-2 text-warning"></i>Sugestões da IA</h5>
+                        <div class="row g-3">
+                `;
+
+          data.suggestions.forEach((sugg) => {
+            const level = sugg.category.split("_")[1];
+            const badgeClass =
+              level === "Easy"
+                ? "badge-easy"
+                : level === "Medium"
+                ? "badge-medium"
+                : "badge-hard";
+
+            let statusBadge = "";
+            if (sugg.status === "GREEN") {
+              statusBadge =
+                '<span class="badge badge-over ms-1">✓ GREEN</span>';
+            } else if (sugg.status === "RED") {
+              statusBadge = '<span class="badge badge-hard ms-1">✗ RED</span>';
+            }
+
+            html += `
+                        <div class="col-md-4">
+                            <div class="stat-card">
+                                <div class="mb-2">
+                                    <span class="badge ${badgeClass}">${level.toUpperCase()}</span>
+                                    ${statusBadge}
+                                </div>
+                                <h6>${sugg.market}</h6>
+                                <p class="mb-1 text-secondary">${
+                                  sugg.market_group || "-"
+                                }</p>
+                                <div class="stat-value" style="font-size: 1.5rem;">@${sugg.odds.toFixed(
+                                  2
+                                )}</div>
+                                <small class="text-secondary">${(
+                                  sugg.probability * 100
+                                ).toFixed(1)}% prob.</small>
+                            </div>
+                        </div>
+                    `;
+          });
+
+          html += `
+                        </div>
+                    </div>
+                `;
+        }
+
+        container.innerHTML = html;
+      }
+
+      // ============================================================
+      // History
+      // ============================================================
+      function loadHistory() {
+        $.get("/api/analyses").done(function (analyses) {
+          const tbody = document.getElementById("historyTable");
+
+          if (analyses.length === 0) {
+            tbody.innerHTML = `
+                            <tr>
+                                <td colspan="5" class="text-center text-secondary py-4">
+                                    Nenhuma análise encontrada.
+                                </td>
+                            </tr>
+                        `;
+            return;
+          }
+
+          let html = "";
+          analyses.forEach((a) => {
+            const matchName = `${a.home_team_name} vs ${a.away_team_name}`;
+            let score = "-";
+            
+            if (a.status === 'finished') {
+                score = a.home_score !== null ? `${a.home_score} x ${a.away_score}` : "-";
+            } else {
+                score = '<span class="badge bg-warning text-dark">Ao Vivo</span>';
+            }
+            
+            const mlPred = a.ml_prediction ? a.ml_prediction.toFixed(1) : "-";
+
+            html += `
+                            <tr>
+                                <td>
+                                    <strong>${matchName}</strong>
+                                    <br><small class="text-secondary">ID: ${a.match_id}</small>
+                                </td>
+                                <td>${score}</td>
+                                <td><span class="badge bg-primary">${mlPred}</span></td>
+                                <td>${a.num_predictions} previsões</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="loadMatchResult('${a.match_id}')">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+          });
+
+          tbody.innerHTML = html;
+        });
+      }
+
+      // ============================================================
+      // Stats
+      // ============================================================
+      function loadStats() {
+        $.get("/api/stats").done(function (stats) {
+          document.getElementById("statMatches").textContent =
+            stats.total_matches || 0;
+          document.getElementById("statPredictions").textContent =
+            stats.total_predictions || 0;
+          document.getElementById("statAccuracy").textContent = stats.accuracy
+            ? stats.accuracy.toFixed(1) + "%"
+            : "-";
+        });
+      }
+
+      // ============================================================
+      // Config
+      // ============================================================
+      function loadConfig() {
+        $.get("/api/config").done(function (config) {
+          document.getElementById("configHeadless").checked = config.headless;
+          document.getElementById("configModelType").value = config.model_type;
+          document.getElementById("configImprovedModel").checked =
+            config.use_improved_model;
+          document.getElementById("configSimulations").value =
+            config.num_simulations;
+          document.getElementById("configHistoryGames").value =
+            config.history_games;
+          document.getElementById("configConfidence").value =
+            config.confidence_threshold;
+          document.getElementById("confidenceValue").textContent =
+            Math.round(config.confidence_threshold * 100) + "%";
+          document.getElementById("configLiveUpdateInterval").value =
+            config.live_update_interval || 5;
+        });
+      }
+
+      function saveConfig() {
+        const config = {
+          headless: document.getElementById("configHeadless").checked,
+          model_type: document.getElementById("configModelType").value,
+          use_improved_model: document.getElementById("configImprovedModel")
+            .checked,
+          num_simulations: parseInt(
+            document.getElementById("configSimulations").value
+          ),
+          history_games: parseInt(
+            document.getElementById("configHistoryGames").value
+          ),
+          confidence_threshold: parseFloat(
+            document.getElementById("configConfidence").value
+          ),
+          live_update_interval: parseInt(
+            document.getElementById("configLiveUpdateInterval").value
+          ),
+        };
+
+        $.ajax({
+          url: "/api/config",
+          method: "POST",
+          contentType: "application/json",
+          data: JSON.stringify(config),
+        })
+          .done(function () {
+            showToast("Sucesso", "Configurações salvas!", "success");
+            bootstrap.Modal.getInstance(
+              document.getElementById("configModal")
+            ).hide();
+            // Restart live update loop with new interval
+            startLiveUpdateLoop();
+          })
+          .fail(function () {
+            showToast(
+              "Erro",
+              "Não foi possível salvar as configurações.",
+              "error"
+            );
+          });
+      }
+
+      function loadLeagues() {
+          $.get('/api/leagues')
+            .done(function(leagues) {
+              const select = document.getElementById('leagueSelect');
+              if(leagues && leagues.length > 0) {
+                  select.innerHTML = '';
+                  leagues.forEach(l => {
+                      const option = document.createElement('option');
+                      // JSON uses 'torneio' for league name
+                      const name = l.torneio || l.nome || "Liga Desconhecida";
+                      option.value = name;
+                      option.textContent = name;
+                      if(name === 'Brasileirão Série A') option.selected = true;
+                      select.appendChild(option);
+                  });
+              } else {
+                  console.warn("Nenhuma liga encontrada na API.");
+              }
+            })
+            .fail(function(xhr) {
+                console.error("Erro ao carregar ligas:", xhr);
+                showToast("Erro", "Falha ao carregar lista de ligas.", "error");
+            });
+      }
+
+      // Update confidence display
+      document
+        .getElementById("configConfidence")
+        .addEventListener("input", function () {
+          document.getElementById("confidenceValue").textContent =
+            Math.round(this.value * 100) + "%";
+        });
+
+      // ============================================================
+      // Toast
+      // ============================================================
+      function showToast(title, message, type) {
+        const toast = document.getElementById("toast");
+        const toastTitle = document.getElementById("toastTitle");
+        const toastBody = document.getElementById("toastBody");
+        const toastIcon = document.getElementById("toastIcon");
+
+        toastTitle.textContent = title;
+        toastBody.textContent = message;
+
+        const icons = {
+          success: "bi-check-circle text-success",
+          error: "bi-x-circle text-danger",
+          warning: "bi-exclamation-triangle text-warning",
+          info: "bi-info-circle text-primary",
+        };
+
+        toastIcon.className = "bi me-2 " + (icons[type] || icons.info);
+
+        const bsToast = new bootstrap.Toast(toast);
+        bsToast.show();
+      }
+
+      // ============================================================
+      // Init
+      // ============================================================
+      $(document).ready(function () {
+        connectSSE();
+        loadStats();
+        loadHistory();
+        loadConfig();
+        loadLeagues();
+
+        // Enter key on match URL
+        document
+          .getElementById("matchUrl")
+          .addEventListener("keypress", function (e) {
+            if (e.key === "Enter") {
+              analyzeMatch();
+            }
+          });
+      });
+      // --- Vigilante Mode (Live Update) ---
+      let vigilanteInterval = null;
+
+      function startLiveUpdateLoop() {
+          if (vigilanteInterval) clearInterval(vigilanteInterval);
+          
+          // Fetch interval from config
+          $.get("/api/config").done(function(config) {
+              const intervalMinutes = config.live_update_interval || 5;
+              const intervalMs = intervalMinutes * 60 * 1000;
+              
+              vigilanteInterval = setInterval(runVigilanteCheck, intervalMs);
+              console.log(`Modo Vigilante ativado: verificando jogos ao vivo a cada ${intervalMinutes} min.`);
+          });
+      }
+
+      function runVigilanteCheck() {
+          $.get("/api/analyses").done(function(analyses) {
+              const liveMatches = analyses.filter(a => a.status === 'inprogress');
+              
+              if (liveMatches.length > 0) {
+                  showToast("Live Update", `Atualizando ${liveMatches.length} jogos ao vivo...`, "info");
+                  updateNextMatch(liveMatches, 0);
+              }
+          });
+      }
+
+      function updateNextMatch(matches, index) {
+          if (index >= matches.length) {
+              showToast("Live Update", "Todos os jogos atualizados!", "success");
+              loadHistory(); // Refresh table
+              return;
+          }
+
+          const match = matches[index];
+          console.log(`Vigilante: Atualizando ${match.match_id}...`);
+
+          $.ajax({
+              url: '/api/database/update_match',
+              method: 'POST',
+              contentType: 'application/json',
+              data: JSON.stringify({ url: match.match_id.toString() })
+          })
+          .always(function() {
+              // Wait 10s before next update to be polite to server/scraper
+              setTimeout(() => {
+                  updateNextMatch(matches, index + 1);
+              }, 10000);
+          });
+      }
+
+      // --- Single Match Update (Manual) ---
+      function updateSingleMatch(matchId) {
+          showToast("Aguarde", "Iniciando atualização...", "info");
+          
+          $.ajax({
+              url: '/api/database/update_match',
+              method: 'POST',
+              contentType: 'application/json',
+              data: JSON.stringify({ url: matchId.toString() })
+          })
+          .done(function() {
+              showToast("Sucesso", "Atualização iniciada! Aguarde alguns segundos.", "success");
+              // Poll for completion or just reload after a delay
+              setTimeout(() => {
+                  loadMatchResult(matchId);
+              }, 5000);
+          })
+          .fail(function(xhr) {
+              const error = xhr.responseJSON?.error || "Erro ao atualizar.";
+              showToast("Erro", error, "error");
+          });
+      }
+
+      // Start Vigilante on load
+      $(document).ready(function() {
+          startLiveUpdateLoop();
+      });
+    </script>
+  </body>
+</html>
