@@ -108,6 +108,18 @@ python run_web.py
 
 _Abra o navegador no endereço que aparecer (geralmente `http://localhost:5000`)._
 
+_Abra o navegador no endereço que aparecer (geralmente `http://localhost:5000`)._
+
+### 5. Scanner de Oportunidades (Automático) 🆕
+
+Quer analisar **todos** os jogos do dia de uma vez?
+
+```bash
+python src/main.py
+```
+
+_Escolha a opção **7**. O sistema vai buscar todos os jogos, analisar um por um e gerar um relatório com as melhores oportunidades (Confiança > 70%)._
+
 ---
 
 ## 📂 Onde Está Cada Coisa?

@@ -123,6 +123,26 @@ Comparamos a nossa **Odd Justa** com a **Odd da Casa de Apostas**.
 
 Isso é uma **Value Bet**! Estamos comprando uma nota de 100 reais pagando 50. A longo prazo, a matemática garante o lucro.
 
+Isso é uma **Value Bet**! Estamos comprando uma nota de 100 reais pagando 50. A longo prazo, a matemática garante o lucro.
+
+---
+
+## 7. Scanner de Oportunidades (Automação em Lote) 🚀
+
+O **Scanner** é a evolução do sistema. Em vez de analisar um jogo por vez, ele analisa o dia inteiro.
+
+### Como funciona?
+
+1.  **Busca em Lote**: O Scraper vai ao calendário do SofaScore e baixa a lista de todos os jogos do dia (ex: 50 jogos).
+2.  **Filtro de Ligas**: Ignoramos ligas obscuras (ex: 3ª divisão do Vietnã) para focar onde temos dados confiáveis.
+3.  **Processamento Paralelo (Simulado)**: O sistema itera sobre cada jogo, aplica o modelo de IA e calcula a confiança.
+4.  **Ranking de Oportunidades**:
+    - Se a confiança da IA for **< 70%**, o jogo é descartado.
+    - Se for **> 70%**, entra no relatório.
+    - O relatório é ordenado: as melhores oportunidades aparecem no topo.
+
+Isso transforma o sistema de uma ferramenta passiva ("O que você acha desse jogo?") em uma ferramenta ativa ("Quais são os melhores jogos de hoje?").
+
 ---
 
 ## Resumo da Ópera

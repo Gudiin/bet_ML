@@ -561,6 +561,59 @@
 
         <!-- Main Content -->
         <div class="col-lg-9">
+          <!-- Scanner de Oportunidades Card -->
+          <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span><i class="bi bi-radar"></i> Scanner de Oportunidades (Agenda do Dia)</span>
+              <span class="badge bg-warning text-dark">NOVO</span>
+            </div>
+            <div class="card-body">
+              <div class="row align-items-end">
+                <div class="col-md-4">
+                  <label class="form-label text-secondary">Data da Análise</label>
+                  <div class="btn-group w-100" role="group">
+                    <input type="radio" class="btn-check" name="scannerDate" id="dateToday" value="today" checked>
+                    <label class="btn btn-outline-secondary" for="dateToday">Hoje</label>
+                    <input type="radio" class="btn-check" name="scannerDate" id="dateTomorrow" value="tomorrow">
+                    <label class="btn btn-outline-secondary" for="dateTomorrow">Amanhã</label>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label text-secondary">Filtro de Ligas</label>
+                  <select class="form-select bg-dark text-light border-secondary" id="scannerLeagues">
+                    <option value="top7" selected>8 Ligas cadastradas</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <button id="btnStartScanner" class="btn btn-primary w-100" onclick="startScanner()">
+                    <i class="bi bi-search"></i> Iniciar Scanner
+                  </button>
+                </div>
+              </div>
+
+              <!-- Resultados do Scanner -->
+              <div id="scannerResults" class="mt-4" style="display: none;">
+                <h5 class="text-secondary mb-3">🎯 Melhores Oportunidades Encontradas</h5>
+                <div class="table-responsive">
+                  <table class="table table-dark table-hover">
+                    <thead>
+                      <tr>
+                        <th>Horário</th>
+                        <th>Partida</th>
+                        <th>Campeonato</th>
+                        <th>Previsão ML</th>
+                        <th>Melhor Aposta</th>
+                        <th>Confiança</th>
+                      </tr>
+                    </thead>
+                    <tbody id="scannerTableBody">
+                      <!-- Preenchido via JS -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
           <!-- Progress Bar (hidden by default) -->
           <div id="progressContainer" class="mb-4" style="display: none">
             <div class="card">
@@ -1044,7 +1097,7 @@
 
         // Disable/enable buttons
         document
-          .querySelectorAll("#btnUpdateDB, #btnTrain, #btnAnalyze")
+          .querySelectorAll("#btnUpdateDB, #btnTrain, #btnAnalyze, #btnStartScanner")
           .forEach((btn) => {
             btn.disabled = running;
           });
@@ -1659,6 +1712,115 @@
           document.getElementById("confidenceValue").textContent =
             Math.round(this.value * 100) + "%";
         });
+
+      // ============================================================
+      // Scanner Logic
+      // ============================================================
+      async function startScanner() {
+          if (isRunning) return;
+          setStatus(true, "Iniciando scanner...");
+
+          const dateMode = document.querySelector('input[name="scannerDate"]:checked').value;
+          const leaguesMode = document.getElementById('scannerLeagues').value;
+          
+          try {
+              const response = await fetch('/api/scanner/start', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      date_mode: dateMode,
+                      leagues_mode: leaguesMode
+                  })
+              });
+              
+              const data = await response.json();
+              if (data.error) {
+                  showToast('Erro', data.error, 'error');
+                  setStatus(false);
+              } else {
+                  showToast("Scanner iniciado", "Verificando jogos...", "info");
+                  pollStatus(); // Use existing pollStatus to monitor
+                  // The scanner results will be loaded once pollStatus detects is_running is false
+              }
+          } catch (error) {
+              console.error('Erro ao iniciar scanner:', error);
+              showToast('Erro', 'Erro ao conectar com o servidor.', 'error');
+              setStatus(false);
+          }
+      }
+
+      // Modified pollStatus to also check for scanner completion
+      const originalPollStatus = pollStatus;
+      pollStatus = function() {
+          const poll = setInterval(function () {
+              $.get("/api/status").done(function (status) {
+                  if (!status.is_running) {
+                      clearInterval(poll);
+                      setStatus(false);
+
+                      // Load results if we just analyzed a match
+                      if (currentMatchId) {
+                          loadMatchResult(currentMatchId);
+                          currentMatchId = null;
+                      }
+                      
+                      // Check if scanner results need to be loaded
+                      if (status.last_task_type === 'scanner' && status.progress === 100) {
+                          loadScannerResults();
+                      }
+
+                      // Refresh stats and history
+                      loadStats();
+                      loadHistory();
+                  }
+              });
+          }, 1000);
+      };
+
+      async function loadScannerResults() {
+          try {
+              const response = await fetch('/api/scanner/results');
+              const results = await response.json();
+              
+              const container = document.getElementById('scannerResults');
+              const tbody = document.getElementById('scannerTableBody');
+              tbody.innerHTML = '';
+              
+              if (results.length === 0) {
+                  container.style.display = 'none';
+                  showToast("Scanner", "Nenhuma oportunidade encontrada para os critérios selecionados.", "info");
+                  return;
+              }
+              
+              results.forEach(item => {
+                  const row = `
+                      <tr>
+                          <td>${item.start_time.split(' ')[1]}</td>
+                          <td>${item.match_name}</td>
+                          <td><span class="badge bg-secondary">${item.tournament}</span></td>
+                          <td><strong>${item.ml_prediction}</strong></td>
+                          <td><span class="badge bg-success">${item.best_bet}</span></td>
+                          <td>
+                              <div class="progress" style="height: 20px;">
+                                  <div class="progress-bar bg-info" role="progressbar" 
+                                       style="width: ${item.confidence}%">
+                                      ${item.confidence}%
+                                  </div>
+                              </div>
+                          </td>
+                      </tr>
+                  `;
+                  tbody.innerHTML += row;
+              });
+              
+              container.style.display = 'block';
+              showToast("Scanner", `Encontradas ${results.length} oportunidades!`, "success");
+              
+          } catch (error) {
+              console.error('Erro ao carregar resultados do scanner:', error);
+              showToast('Erro', 'Falha ao carregar resultados do scanner.', 'error');
+          }
+      }
 
       // ============================================================
       // Toast
