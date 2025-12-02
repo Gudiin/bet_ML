@@ -86,7 +86,113 @@ class SofaScoreScraper:
                 pass
         return None
 
-    # --- MÉTODO MODIFICADO ---
+    def get_current_round(self, tournament_id: int, season_id: int) -> int | None:
+        """
+        Obtém o número da rodada atual de um torneio.
+        
+        Regra de Negócio:
+            - Economia de API: Em vez de baixar todas as rodadas, perguntamos à API
+              qual é a rodada atual (currentRound) para baixar apenas ela.
+              
+        Args:
+            tournament_id: ID do torneio.
+            season_id: ID da temporada.
+            
+        Returns:
+            int: Número da rodada atual ou None se não encontrar.
+        """
+        url = f"https://www.sofascore.com/api/v1/unique-tournament/{tournament_id}/season/{season_id}/rounds"
+        print(f"Buscando rodada atual (Torneio {tournament_id})...")
+        
+        data = self._fetch_api(url)
+        if data and 'currentRound' in data:
+            return data['currentRound']['round']
+        return None
+
+    def get_scheduled_matches(self, date_str: str, league_ids: list = None) -> list:
+        """
+        Busca jogos agendados para uma data específica (Scanner).
+        
+        Regra de Negócio:
+            - Scanner de Oportunidades: Busca jogos de hoje/amanhã para análise.
+            - API Economy: Para cada liga, busca a rodada atual e filtra pela data.
+            - Se league_ids for None, usa uma lista padrão de ligas principais.
+            
+        Args:
+            date_str: Data no formato 'YYYY-MM-DD'.
+            league_ids: Lista de IDs de torneios para escanear.
+            
+        Returns:
+            list: Lista de dicionários com dados simplificados dos jogos.
+        """
+        matches = []
+        
+        # Lista padrão se nenhuma for fornecida (Top 7 + Brasileirão)
+        if not league_ids:
+            league_ids = [325, 390, 17, 8, 31, 35, 34, 23]
+            
+        print(f"Iniciando Scanner para {date_str} em {len(league_ids)} ligas...")
+        
+        for t_id in league_ids:
+            # 1. Descobrir Season ID (assumindo ano atual/recente)
+            # Simplificação: Tenta 2025, depois 24/25
+            s_id = self.get_season_id(t_id, "2025")
+            if not s_id:
+                s_id = self.get_season_id(t_id, "25/26")
+            if not s_id:
+                s_id = self.get_season_id(t_id, "2024") # Fallback
+                
+            if not s_id:
+                continue
+                
+            # 2. Descobrir Rodada Atual (API Economy)
+            current_round = self.get_current_round(t_id, s_id)
+            if not current_round:
+                continue
+                
+            # 3. Baixar Jogos da Rodada
+            # Usamos get_matches mas limitamos a busca apenas à rodada atual
+            # Precisamos adaptar get_matches ou chamar a API diretamente aqui
+            # Para não duplicar código complexo, vamos chamar a API direto aqui simplificado
+            
+            url = f"https://www.sofascore.com/api/v1/unique-tournament/{t_id}/season/{s_id}/events/round/{current_round}"
+            data = self._fetch_api(url)
+            
+            if data and 'events' in data:
+                for event in data['events']:
+                    # Filtra pela data
+                    # Timestamp do evento
+                    evt_ts = event.get('startTimestamp')
+                    if not evt_ts:
+                        continue
+                        
+                    # Converte timestamp para data string (UTC para comparar com input)
+                    # O input date_str é YYYY-MM-DD.
+                    # Precisamos cuidar com fuso horário. O SofaScore manda timestamp UTC.
+                    # Se o usuário quer "jogos de hoje (Brasília)", ele passou a data de hoje em Brasília.
+                    # Um jogo 21h BRT é 00h UTC (dia seguinte).
+                    # A comparação ideal é converter o timestamp do jogo para BRT e comparar a data.
+                    
+                    import datetime
+                    # UTC-3 fixo para simplicidade (sem pytz)
+                    tz_offset = datetime.timezone(datetime.timedelta(hours=-3))
+                    evt_date = datetime.datetime.fromtimestamp(evt_ts, tz=tz_offset).strftime('%Y-%m-%d')
+                    
+                    if evt_date == date_str:
+                        # Extrai dados relevantes
+                        match_info = {
+                            'match_id': event['id'],
+                            'tournament': event['tournament']['name'],
+                            'home_team': event['homeTeam']['name'],
+                            'away_team': event['awayTeam']['name'],
+                            'start_time': datetime.datetime.fromtimestamp(evt_ts, tz=tz_offset).strftime('%Y-%m-%d %H:%M'),
+                            'status': event['status']['type']
+                        }
+                        matches.append(match_info)
+                        
+        print(f"Scanner finalizado. {len(matches)} jogos encontrados para {date_str}.")
+        return matches
+
     def get_matches(self, tournament_id: int, season_id: int, start_round: int = 1) -> list:
         """
         Coleta partidas com suporte a início customizado (start_round).
@@ -118,7 +224,6 @@ class SofaScoreScraper:
             
         print(f"\nTotal de partidas coletadas nesta execução: {len(matches)}")
         return matches
-    # --------------------------
 
     def get_match_stats(self, match_id: int) -> dict:
         url = f"https://www.sofascore.com/api/v1/event/{match_id}/statistics"

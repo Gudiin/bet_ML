@@ -858,20 +858,29 @@ def _analyze_match_task(match_id: str) -> Dict[str, Any]:
 def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_mode: str = 'all') -> None:
     """
     Tarefa de background para o Scanner de Oportunidades.
+    
+    Regras de Negócio (Nível 3):
+        1. Janela de Tempo: Usa horário de Brasília (UTC-3) para definir "Hoje" e "Amanhã".
+        2. Filtro de Lixo: Pula silenciosamente times com menos de 3 jogos no histórico.
+        3. API Economy: O scraper agora busca apenas a rodada atual (implementado no sofascore.py).
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     import random # Placeholder for ML prediction
     
-    # 1. Determina a data
+    # 1. Determina a data (Com Fuso Horário de Brasília - UTC-3)
+    # Cria timezone UTC-3
+    brt_tz = timezone(timedelta(hours=-3))
+    now_brt = datetime.now(brt_tz)
+    
     if date_mode == 'tomorrow':
-        date_str = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-        date_label = "AMANHÃ"
+        date_str = (now_brt + timedelta(days=1)).strftime('%Y-%m-%d')
+        date_label = f"AMANHÃ ({date_str})"
     elif date_mode == 'specific' and specific_date:
         date_str = specific_date
         date_label = specific_date
     else: # today
-        date_str = datetime.now().strftime('%Y-%m-%d')
-        date_label = "HOJE"
+        date_str = now_brt.strftime('%Y-%m-%d')
+        date_label = f"HOJE ({date_str})"
         
     # 2. Determina ligas
     leagues_filter = None
@@ -907,11 +916,11 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
         scraper.start()
         update_progress(10, 'Buscando jogos...')
         
-        # Busca jogos
+        # Busca jogos usando o novo método otimizado (API Economy)
         matches = scraper.get_scheduled_matches(date_str, leagues_filter)
         
         if not matches:
-            emit_log('❌ Nenhum jogo encontrado.', 'warning')
+            emit_log('❌ Nenhum jogo encontrado para esta data.', 'warning')
             return
             
         emit_log(f'📊 Encontrados {len(matches)} jogos.', 'success')
@@ -938,20 +947,6 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
                 
                 # --- Lógica de Previsão ML ---
                 if model_loaded and not df_history.empty:
-                    # Busca histórico dos times
-                    # Nota: match['home_team'] é string, precisamos do ID se possível
-                    # O scraper get_scheduled_matches retorna nomes. 
-                    # Tentar encontrar ID pelo nome no histórico é arriscado mas é o que temos se o scraper não der ID.
-                    # O scraper ATUALIZADO deve retornar IDs. Vamos assumir que retorna.
-                    
-                    # Se o scraper não retornar IDs, teremos que pular ML ou usar fuzzy match.
-                    # Vamos assumir que o scraper foi atualizado ou usar match por nome (menos preciso)
-                    
-                    # Simplificação: Usar média simples se não tiver ID, ou 0.
-                    # Para fazer direito, o get_scheduled_matches deveria retornar IDs.
-                    # Como não alteramos o scraper para retornar IDs (ele retorna dict com nomes), 
-                    # vamos tentar fazer match por nome no DataFrame histórico.
-                    
                     home_team = match['home_team']
                     away_team = match['away_team']
                     
@@ -966,63 +961,62 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
                         (df_history['away_team_name'] == away_team)
                     ].sort_values('start_timestamp').tail(5)
                     
-                    if len(h_games) >= 3 and len(a_games) >= 3:
-                        # Calcula features manualmente (equivalente a prepare_improved_features)
-                        def get_stats(games, team_name):
-                            corners = []
-                            shots = []
-                            goals = []
-                            corners_ht = []
-                            for _, row in games.iterrows():
-                                if row['home_team_name'] == team_name:
-                                    corners.append(row['corners_home_ft'])
-                                    shots.append(row['shots_ot_home_ft'])
-                                    goals.append(row['home_score'])
-                                    corners_ht.append(row['corners_home_ht'])
-                                else:
-                                    corners.append(row['corners_away_ft'])
-                                    shots.append(row['shots_ot_away_ft'])
-                                    goals.append(row['away_score'])
-                                    corners_ht.append(row['corners_away_ht'])
-                            return corners, shots, goals, corners_ht
+                    # --- FILTRO DE LIXO (Data Sufficiency) ---
+                    # Regra de Negócio: Se não tiver pelo menos 3 jogos, pula silenciosamente.
+                    if len(h_games) < 3 or len(a_games) < 3:
+                        # Opcional: Logar em debug se necessário, mas o requisito é "silencioso" ou "sem avisar erro"
+                        # Vamos apenas pular.
+                        continue 
+                    
+                    # Calcula features manualmente (equivalente a prepare_improved_features)
+                    def get_stats(games, team_name):
+                        corners = []
+                        shots = []
+                        goals = []
+                        corners_ht = []
+                        for _, row in games.iterrows():
+                            if row['home_team_name'] == team_name:
+                                corners.append(row['corners_home_ft'])
+                                shots.append(row['shots_ot_home_ft'])
+                                goals.append(row['home_score'])
+                                corners_ht.append(row['corners_home_ht'])
+                            else:
+                                corners.append(row['corners_away_ft'])
+                                shots.append(row['shots_ot_away_ft'])
+                                goals.append(row['away_score'])
+                                corners_ht.append(row['corners_away_ht'])
+                        return corners, shots, goals, corners_ht
 
-                        h_c, h_s, h_g, h_cht = get_stats(h_games, home_team)
-                        a_c, a_s, a_g, a_cht = get_stats(a_games, away_team)
+                    h_c, h_s, h_g, h_cht = get_stats(h_games, home_team)
+                    a_c, a_s, a_g, a_cht = get_stats(a_games, away_team)
+                    
+                    def avg(l): return sum(l)/len(l) if l else 0
+                    
+                    # Features vector
+                    features = [
+                        avg(h_c), avg(h_s), avg(h_g),          # Home Avg 5
+                        avg(a_c), avg(a_s), avg(a_g),          # Away Avg 5
+                        avg(h_cht), avg(a_cht),                # HT Corners
+                        avg(h_c) + avg(a_c),                   # Total Expected
+                        avg(h_c) - avg(a_c),                   # Diff
+                        avg(h_c[-3:]) - avg(h_c),              # Home Trend
+                        avg(a_c[-3:]) - avg(a_c)               # Away Trend
+                    ]
+                    
+                    # Predict
+                    pred = predictor.predict([features])
+                    ml_prediction = float(pred[0])
+                    
+                    # Confiança baseada na consistência (desvio padrão) e força do sinal
+                    std_dev = (np.std(h_c) + np.std(a_c)) / 2
+                    confidence = max(0.5, min(0.95, 1.0 - (std_dev / 10.0)))
+                    if ml_prediction > 10.5 or ml_prediction < 8.5:
+                        confidence += 0.1
+                    confidence = min(0.99, confidence)
                         
-                        def avg(l): return sum(l)/len(l) if l else 0
-                        
-                        # Features vector
-                        features = [
-                            avg(h_c), avg(h_s), avg(h_g),          # Home Avg 5
-                            avg(a_c), avg(a_s), avg(a_g),          # Away Avg 5
-                            avg(h_cht), avg(a_cht),                # HT Corners
-                            avg(h_c) + avg(a_c),                   # Total Expected
-                            avg(h_c) - avg(a_c),                   # Diff
-                            avg(h_c[-3:]) - avg(h_c),              # Home Trend
-                            avg(a_c[-3:]) - avg(a_c)               # Away Trend
-                        ]
-                        
-                        # Predict
-                        pred = predictor.predict([features])
-                        ml_prediction = float(pred[0])
-                        
-                        # Confiança baseada na consistência (desvio padrão) e força do sinal
-                        # Simplificado: se previu > 9.5 e média é alta, confiança maior
-                        std_dev = (np.std(h_c) + np.std(a_c)) / 2
-                        confidence = max(0.5, min(0.95, 1.0 - (std_dev / 10.0)))
-                        if ml_prediction > 10.5 or ml_prediction < 8.5:
-                            confidence += 0.1
-                        confidence = min(0.99, confidence)
-                        
-                    else:
-                        # Dados insuficientes
-                        ml_prediction = 0
-                        confidence = 0
-                
-                # Fallback para simulação se ML falhar ou não tiver dados
-                if ml_prediction == 0:
-                    ml_prediction = random.uniform(8.5, 12.5)
-                    confidence = random.uniform(0.40, 0.70) # Confiança menor para simulação
+                else:
+                    # Se não tem modelo ou histórico vazio, pula (não gera simulação aleatória para scanner sério)
+                    continue
                 
                 # --- Persistência ---
                 
@@ -1036,7 +1030,6 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
                     
                     # 2. Salvar Match (Necessário para JOINs no histórico)
                     # Reconstrói match_data compatível com save_match
-                    from datetime import datetime
                     try:
                         ts = int(datetime.strptime(match['start_time'], '%Y-%m-%d %H:%M').timestamp())
                     except:
@@ -1069,7 +1062,7 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
                         odds=1.85, # Placeholder
                         category='Scanner',
                         market_group='Corners',
-                        verbose=True # Debug
+                        verbose=False
                     )
                     
                     result = {
@@ -1089,8 +1082,6 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
                         
                 except Exception as e:
                     print(f"Erro ao persistir dados do jogo {match_name}: {e}")
-                    import traceback
-                    traceback.print_exc()
                     
             except Exception as e:
                 print(f"Erro ao analisar {match_name}: {e}")
@@ -1102,7 +1093,6 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
             system_state['scan_results'] = opportunities
             
         emit_log(f'✅ Scanner finalizado! {len(opportunities)} oportunidades encontradas.', 'success')
-        emit_log(f'💾 Todos os {total} jogos foram salvos no histórico.', 'info')
         update_progress(100, 'Concluído')
         
     except Exception as e:
