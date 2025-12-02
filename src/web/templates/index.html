@@ -1311,7 +1311,7 @@
                                 <span class="fw-bold text-info">${data.stats.shots_ot_away_ft || 0}</span>
                             </div>
                         </div>
-
+                        
                         <!-- Faltas -->
                         <div class="col-3">
                             <small class="text-secondary d-block mb-1">Faltas</small>
@@ -1319,6 +1319,52 @@
                                 <span class="fw-bold text-primary">${data.stats.fouls_home || 0}</span>
                                 <span class="text-white small">vs</span>
                                 <span class="fw-bold text-info">${data.stats.fouls_away || 0}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Grid de Estatísticas Adicionais -->
+                    <div class="row text-center g-3 mt-2" style="font-size: 0.9rem;">
+                        <!-- Big Chances -->
+                        <div class="col-6">
+                            <small class="text-secondary d-block mb-1">Big Chances 🎯</small>
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <span class="fw-bold text-primary">${data.stats.big_chances_home || 0}</span>
+                                <span class="text-white small">vs</span>
+                                <span class="fw-bold text-info">${data.stats.big_chances_away || 0}</span>
+                            </div>
+                        </div>
+                        
+                        <!-- xG (Expected Goals) -->
+                        <div class="col-6">
+                            <small class="text-secondary d-block mb-1">xG (Expected Goals)</small>
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <span class="fw-bold text-primary">${data.stats.expected_goals_home ? data.stats.expected_goals_home.toFixed(2) : '0.00'}</span>
+                                <span class="text-white small">vs</span>
+                                <span class="fw-bold text-info">${data.stats.expected_goals_away ? data.stats.expected_goals_away.toFixed(2) : '0.00'}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Grid de Estatísticas Secundárias (Level 2) -->
+                    <div class="row text-center g-3 mt-1" style="font-size: 0.9rem;">
+                        <!-- Cartões Amarelos -->
+                        <div class="col-6">
+                            <small class="text-secondary d-block mb-1">Cartões Amarelos 🟨</small>
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <span class="fw-bold text-primary">${data.stats.yellow_cards_home || 0}</span>
+                                <span class="text-white small">vs</span>
+                                <span class="fw-bold text-info">${data.stats.yellow_cards_away || 0}</span>
+                            </div>
+                        </div>
+
+                        <!-- Cartões Vermelhos -->
+                        <div class="col-6">
+                            <small class="text-secondary d-block mb-1">Cartões Vermelhos 🟥</small>
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <span class="fw-bold text-primary">${data.stats.red_cards_home || 0}</span>
+                                <span class="text-white small">vs</span>
+                                <span class="fw-bold text-info">${data.stats.red_cards_away || 0}</span>
                             </div>
                         </div>
                     </div>
@@ -1467,11 +1513,15 @@
             const matchName = `${a.home_team_name} vs ${a.away_team_name}`;
             let score = "-";
             
-            if (a.status === 'finished') {
-                score = a.home_score !== null ? `${a.home_score} x ${a.away_score}` : "-";
-            } else {
-                score = '<span class="badge bg-warning text-dark">Ao Vivo</span>';
-            }
+      if (a.status === 'finished') {
+          score = a.home_score !== null ? `${a.home_score} x ${a.away_score}` : "-";
+      } else if (a.status === 'inprogress') {
+          score = '<span class="badge bg-warning text-dark">⚽ Ao Vivo</span>';
+      } else if (a.status === 'notstarted') {
+          score = '<span class="badge bg-secondary">📅 Agendado</span>';
+      } else {
+          score = '<span class="badge bg-info text-dark">⏸️ ' + a.status + '</span>';
+      }      
             
             const mlPred = a.ml_prediction ? a.ml_prediction.toFixed(1) : "-";
 

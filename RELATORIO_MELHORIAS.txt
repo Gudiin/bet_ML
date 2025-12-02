@@ -188,44 +188,51 @@ Distribuição de acertos do modelo final:
 ═══════════════════════════════════════════════════════════════════════════════
 
 ═══════════════════════════════════════════════════════════════════════════════
-
-                        ANÁLISE DE EXPANSÃO (MULTI-LIGA)
+                        ANÁLISE TÉCNICA DE MELHORIAS (FEEDBACK EXTERNO)
 ═══════════════════════════════════════════════════════════════════════════════
 
-📅 Data: 29/11/2025
+📅 Data: 01/12/2025
 
-PROPOSTAS DO USUÁRIO:
-1. Atualizar temporada atual de todas as competições
-2. Opção de atualizar somente liga desejada
-3. Buscar dados das últimas 3 temporadas
-4. Melhorias ML (Clima, Tuning, CV)
+🏁 NÍVEL 1: CORREÇÕES LÓGICAS (PRIORIDADE MÁXIMA)
+-------------------------------------------------
+1. INTEGRAÇÃO REAL (CÉREBRO IA + CORAÇÃO ESTATÍSTICO)
+   • Análise: Atualmente, o StatisticalAnalyzer calcula a média (lambda) apenas com base no histórico.
+   • Ação: Fazer o Monte Carlo usar a previsão da IA (ml_prediction) como centro da simulação.
+   • Impacto: CRÍTICO. Alinha a estatística com a inteligência do modelo.
 
-ANÁLISE DE VIABILIDADE E IMPACTO:
+2. AJUSTE DE OBJETIVO DA IA
+   • Análise: O modelo atual usa regressão padrão (L2 loss).
+   • Ação: Alterar objetivo do LightGBM para objective='poisson'.
+   • Impacto: ALTO. Ideal para contagem de escanteios (números inteiros não negativos).
 
-1. 🌍 Expansão Multi-Liga (Prioridade ALTA)
-   - Viabilidade: ✅ Alta (Arquivo clubes_sofascore.json já estruturado)
-   - Impacto ML: ⭐⭐⭐⭐⭐ Crítico. O modelo atual sofre com poucos dados (apenas ~350 jogos).
-     Adicionar Premier League, La Liga, etc., multiplicará o dataset por 5x ou 10x.
-   - Desafio: Tempo de coleta. Solução: Menu granular (atualizar por liga).
+🚀 NÍVEL 2: ENRIQUECIMENTO DE DADOS (CURTO PRAZO)
+-------------------------------------------------
+3. COLETA DE "ATAQUES PERIGOSOS"
+   • Ação: Atualizar scraper para coletar "Dangerous Attacks".
+   • Impacto: MUITO ALTO. Alta correlação com escanteios.
 
-2. ⏳ Histórico de 3 Temporadas (Prioridade ALTA)
-   - Viabilidade: ✅ Média (Requer lógica para IDs de temporadas passadas)
-   - Impacto ML: ⭐⭐⭐⭐⭐ Crítico. Permite capturar tendências de longo prazo e
-     aumenta robustez estatística.
-   - Obs: Essencial para Cross-Validation funcionar bem.
+4. "PRESSURE INDEX" (ÍNDICE DE PRESSÃO)
+   • Ação: Criar feature Pressure_Ratio = Ataques Perigosos / Minutos.
+   • Impacto: MÉDIO/ALTO. Diferencia posse estéril de pressão real.
 
-3. 🛠️ Melhorias Técnicas (CV, Tuning)
-   - Viabilidade: ✅ Alta (Bibliotecas padrão sklearn/optuna)
-   - Impacto: ⭐⭐⭐ Importante para garantir que o modelo não está decorando (overfitting).
-   - Obs: Cross-Validation se torna muito mais confiável com mais dados (itens 1 e 2).
+🤖 NÍVEL 3: AUTOMAÇÃO E SCANNER
+-------------------------------
+5. SCRAPER POR DATA (AGENDA DO DIA)
+   • Ação: Criar método get_scheduled_matches(date).
+   • Viabilidade: Média (exige nova lógica de navegação).
 
-4. 🌦️ Análise de Clima
-   - Viabilidade: ⚠️ Baixa (Scraper atual não coleta clima, requer fonte externa ou mudança complexa)
-   - Recomendação: Deixar para Fase 2. Focar em expandir volume de dados primeiro.
+6. O "SCANNER DE OPORTUNIDADES"
+   • Ação: Criar opção "Buscar Oportunidades do Dia" no menu.
+   • Impacto: OPERACIONAL. Transforma a ferramenta em algo proativo.
 
-CONCLUSÃO:
-A expansão da base de dados (Ligas + Histórico) é o passo mais importante agora.
-O modelo ML está "faminto" por dados. Alimentá-lo com milhares de jogos europeus
-terá impacto maior que qualquer ajuste fino de hiperparâmetros neste momento.
+🧠 NÍVEL 4: REFINAMENTO DE MODELAGEM
+------------------------------------
+7. MODELAGEM SEPARADA (HOME vs AWAY)
+   • Ação: Treinar modelos distintos para Mandante e Visitante.
+   • Viabilidade: Média.
+
+8. OTIMIZAÇÃO BAYESIANA (OPTUNA)
+   • Ação: Substituir GridSearchCV por Optuna.
+   • Viabilidade: Alta.
 
 ═══════════════════════════════════════════════════════════════════════════════

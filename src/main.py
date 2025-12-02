@@ -234,9 +234,11 @@ def get_current_season(league_name: str) -> str:
 
 def update_specific_league() -> None:
     """
-    Menu para atualizar uma liga específica.
+    Menu para atualizar uma liga específica ou todas as ligas.
     """
     print("\n=== SELECIONE A LIGA ===")
+    print("0. 🌍 ATUALIZAR TODAS AS LIGAS (Demorado!)")
+    
     leagues = [
         "Brasileirão Série A",
         "Brasileirão Série B",
@@ -253,7 +255,31 @@ def update_specific_league() -> None:
         
     try:
         choice = int(input("\nEscolha o número da liga: "))
-        if 1 <= choice <= len(leagues):
+        
+        if choice == 0:
+            # Atualizar TODAS as ligas
+            print(f"\n{'='*60}")
+            print(f"🌍 ATUALIZANDO TODAS AS {len(leagues)} LIGAS")
+            print(f"{'='*60}")
+            print("⚠️  Isso pode levar MUITO tempo (várias horas)!")
+            confirm = input("\nDeseja continuar? (s/n): ").lower()
+            
+            if confirm == 's':
+                for idx, league in enumerate(leagues, 1):
+                    season = get_current_season(league)
+                    print(f"\n{'='*60}")
+                    print(f"📊 [{idx}/{len(leagues)}] Atualizando: {league} (Temporada {season})")
+                    print(f"{'='*60}")
+                    update_database(league_name=league, season_year=season)
+                    print(f"✅ {league} concluída!")
+                
+                print(f"\n{'='*60}")
+                print(f"🎉 TODAS AS {len(leagues)} LIGAS FORAM ATUALIZADAS!")
+                print(f"{'='*60}")
+            else:
+                print("Operação cancelada.")
+                
+        elif 1 <= choice <= len(leagues):
             selected_league = leagues[choice-1]
             
             # Determina temporada automaticamente

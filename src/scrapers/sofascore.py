@@ -349,13 +349,16 @@ class SofaScoreScraper:
             'possession_home': 0, 'possession_away': 0,
             'total_shots_home': 0, 'total_shots_away': 0,
             'fouls_home': 0, 'fouls_away': 0,
-            'yellow_cards_home': 0, 'yellow_cards_away': 0
+            'yellow_cards_home': 0, 'yellow_cards_away': 0,
+            'red_cards_home': 0, 'red_cards_away': 0,
+            'big_chances_home': 0, 'big_chances_away': 0,
+            'expected_goals_home': 0.0, 'expected_goals_away': 0.0
         }
 
         if not data or 'statistics' not in data:
             return stats
 
-        def extract_val(groups: list, keywords: list, is_home: bool) -> int:
+        def extract_val(groups: list, keywords: list, is_home: bool, return_float: bool = False):
             """
             Extrai valor numérico de estatística dos grupos de dados.
             
@@ -363,9 +366,10 @@ class SofaScoreScraper:
                 groups: Lista de grupos de estatísticas da API.
                 keywords: Lista de palavras-chave para buscar (bilíngue).
                 is_home: True para mandante, False para visitante.
+                return_float: Se True, retorna float; se False, retorna int.
             
             Returns:
-                int: Valor da estatística ou 0 se não encontrado.
+                float ou int: Valor da estatística ou 0 se não encontrado.
             
             Lógica:
                 1. Itera sobre grupos de estatísticas
@@ -373,7 +377,7 @@ class SofaScoreScraper:
                 3. Retorna valor 'home' ou 'away' conforme is_home
             """
             if not groups:
-                return 0
+                return 0.0 if return_float else 0
             for g in groups:
                 if 'statisticsItems' not in g:
                     continue
@@ -387,10 +391,14 @@ class SofaScoreScraper:
                                     # Handle percentage strings (e.g., "61%" -> 61)
                                     if isinstance(value, str) and '%' in value:
                                         return int(value.replace('%', ''))
-                                    return int(value)
+                                    # Return float or int based on parameter
+                                    if return_float:
+                                        return float(value)
+                                    else:
+                                        return int(value)
                             except (ValueError, TypeError):
-                                return 0
-            return 0
+                                return 0.0 if return_float else 0
+            return 0.0 if return_float else 0
 
         # Extração de Dados (ALL) - usando nomes EXATOS da API
         all_stats = next((p['groups'] for p in data['statistics'] if p['period'] == 'ALL'), [])
@@ -415,6 +423,18 @@ class SofaScoreScraper:
         
         stats['yellow_cards_home'] = extract_val(all_stats, ['yellow cards'], True)
         stats['yellow_cards_away'] = extract_val(all_stats, ['yellow cards'], False)
+        
+        # Cartões Vermelhos (Level 2 Improvement)
+        stats['red_cards_home'] = extract_val(all_stats, ['red cards'], True)
+        stats['red_cards_away'] = extract_val(all_stats, ['red cards'], False)
+        
+        # Big Chances (Level 2 Improvement - Métrica de Qualidade Ofensiva)
+        stats['big_chances_home'] = extract_val(all_stats, ['big chances'], True)
+        stats['big_chances_away'] = extract_val(all_stats, ['big chances'], False)
+        
+        # Expected Goals - xG (Level 2 Improvement - Qualidade das Finalizações)
+        stats['expected_goals_home'] = extract_val(all_stats, ['expected goals'], True, return_float=True)
+        stats['expected_goals_away'] = extract_val(all_stats, ['expected goals'], False, return_float=True)
 
         # Extração de Dados (1ST)
         ht_stats = next((p['groups'] for p in data['statistics'] if p['period'] == '1ST'), [])

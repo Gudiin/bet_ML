@@ -242,7 +242,13 @@ class DBManager:
             "ALTER TABLE match_stats ADD COLUMN fouls_home INTEGER",
             "ALTER TABLE match_stats ADD COLUMN fouls_away INTEGER",
             "ALTER TABLE match_stats ADD COLUMN yellow_cards_home INTEGER",
-            "ALTER TABLE match_stats ADD COLUMN yellow_cards_away INTEGER"
+            "ALTER TABLE match_stats ADD COLUMN yellow_cards_away INTEGER",
+            "ALTER TABLE match_stats ADD COLUMN red_cards_home INTEGER",
+            "ALTER TABLE match_stats ADD COLUMN red_cards_away INTEGER",
+            "ALTER TABLE match_stats ADD COLUMN big_chances_home INTEGER",
+            "ALTER TABLE match_stats ADD COLUMN big_chances_away INTEGER",
+            "ALTER TABLE match_stats ADD COLUMN expected_goals_home REAL",
+            "ALTER TABLE match_stats ADD COLUMN expected_goals_away REAL"
         ]
         
         for sql in migrations:
@@ -508,14 +514,28 @@ class DBManager:
                     corners_home_ft, corners_away_ft, 
                     corners_home_ht, corners_away_ht,
                     shots_ot_home_ft, shots_ot_away_ft,
-                    shots_ot_home_ht, shots_ot_away_ht
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    shots_ot_home_ht, shots_ot_away_ht,
+                    possession_home, possession_away,
+                    total_shots_home, total_shots_away,
+                    fouls_home, fouls_away,
+                    yellow_cards_home, yellow_cards_away,
+                    red_cards_home, red_cards_away,
+                    big_chances_home, big_chances_away,
+                    expected_goals_home, expected_goals_away
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 match_id,
-                stats_data['corners_home_ft'], stats_data['corners_away_ft'],
-                stats_data['corners_home_ht'], stats_data['corners_away_ht'],
-                stats_data['shots_ot_home_ft'], stats_data['shots_ot_away_ft'],
-                stats_data['shots_ot_home_ht'], stats_data['shots_ot_away_ht']
+                stats_data.get('corners_home_ft', 0), stats_data.get('corners_away_ft', 0),
+                stats_data.get('corners_home_ht', 0), stats_data.get('corners_away_ht', 0),
+                stats_data.get('shots_ot_home_ft', 0), stats_data.get('shots_ot_away_ft', 0),
+                stats_data.get('shots_ot_home_ht', 0), stats_data.get('shots_ot_away_ht', 0),
+                stats_data.get('possession_home', 0), stats_data.get('possession_away', 0),
+                stats_data.get('total_shots_home', 0), stats_data.get('total_shots_away', 0),
+                stats_data.get('fouls_home', 0), stats_data.get('fouls_away', 0),
+                stats_data.get('yellow_cards_home', 0), stats_data.get('yellow_cards_away', 0),
+                stats_data.get('red_cards_home', 0), stats_data.get('red_cards_away', 0),
+                stats_data.get('big_chances_home', 0), stats_data.get('big_chances_away', 0),
+                stats_data.get('expected_goals_home', 0.0), stats_data.get('expected_goals_away', 0.0)
             ))
             conn.commit()
         except Exception as e:

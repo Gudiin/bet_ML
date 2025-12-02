@@ -84,7 +84,8 @@ class ImprovedCornerPredictor:
             num_leaves=15,
             subsample=0.8,
             random_state=42,
-            verbosity=-1
+            verbosity=-1,
+            objective='poisson'
         )
     
     def _create_xgboost(self):

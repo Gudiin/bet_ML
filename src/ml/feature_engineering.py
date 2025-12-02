@@ -69,17 +69,20 @@ def calculate_rolling_stats(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
     df = df.sort_values('start_timestamp')
     
     # Reestrutura: separa dados de casa e fora para cada time
-    matches_home = df[['match_id', 'start_timestamp', 'home_team_id', 'corners_home_ft', 'shots_ot_home_ft', 'home_score']].copy()
-    matches_home.columns = ['match_id', 'timestamp', 'team_id', 'corners', 'shots', 'goals']
+    matches_home = df[['match_id', 'start_timestamp', 'home_team_id', 'corners_home_ft', 'shots_ot_home_ft', 'home_score', 'big_chances_home']].copy()
+    matches_home.columns = ['match_id', 'timestamp', 'team_id', 'corners', 'shots', 'goals', 'big_chances']
     matches_home['is_home'] = 1
     
-    matches_away = df[['match_id', 'start_timestamp', 'away_team_id', 'corners_away_ft', 'shots_ot_away_ft', 'away_score']].copy()
-    matches_away.columns = ['match_id', 'timestamp', 'team_id', 'corners', 'shots', 'goals']
+    matches_away = df[['match_id', 'start_timestamp', 'away_team_id', 'corners_away_ft', 'shots_ot_away_ft', 'away_score', 'big_chances_away']].copy()
+    matches_away.columns = ['match_id', 'timestamp', 'team_id', 'corners', 'shots', 'goals', 'big_chances']
     matches_away['is_home'] = 0
     
     # Concatena e ordena por time + tempo
     team_stats = pd.concat([matches_home, matches_away]).sort_values(['team_id', 'timestamp'])
     
+    # Preenche NaN com 0 para big_chances (caso não tenha histórico antigo)
+    team_stats['big_chances'] = team_stats['big_chances'].fillna(0)
+
     # Calcula médias rolling com shift para evitar data leakage
     team_stats['avg_corners_last_5'] = team_stats.groupby('team_id')['corners'].transform(
         lambda x: x.shift(1).rolling(window=5, min_periods=1).mean()
@@ -91,17 +94,27 @@ def calculate_rolling_stats(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
         lambda x: x.shift(1).rolling(window=5, min_periods=1).mean()
     )
     
+    # Nova Feature: Média de Big Chances (Level 2 - Qualidade Ofensiva)
+    team_stats['avg_big_chances_last_5'] = team_stats.groupby('team_id')['big_chances'].transform(
+        lambda x: x.shift(1).rolling(window=5, min_periods=1).mean()
+    )
+    
+    # Nova Feature: Offensive Quality Index (Level 2)
+    # OQI = Big Chances / Total Shots (eficiência ofensiva)
+    # Evita divisão por zero usando np.where
+    team_stats['offensive_quality_index'] = team_stats['avg_big_chances_last_5'] / (team_stats['avg_shots_last_5'] + 0.1)
+    
     # Merge de volta ao DataFrame original
     df_features = df.copy()
     
     # Join para estatísticas do mandante
-    home_stats = team_stats[team_stats['is_home'] == 1][['match_id', 'avg_corners_last_5', 'avg_shots_last_5', 'avg_goals_last_5']]
-    home_stats.columns = ['match_id', 'home_avg_corners', 'home_avg_shots', 'home_avg_goals']
+    home_stats = team_stats[team_stats['is_home'] == 1][['match_id', 'avg_corners_last_5', 'avg_shots_last_5', 'avg_goals_last_5', 'avg_big_chances_last_5', 'offensive_quality_index']]
+    home_stats.columns = ['match_id', 'home_avg_corners', 'home_avg_shots', 'home_avg_goals', 'home_avg_big_chances', 'home_offensive_quality']
     df_features = df_features.merge(home_stats, on='match_id', how='left')
     
     # Join para estatísticas do visitante
-    away_stats = team_stats[team_stats['is_home'] == 0][['match_id', 'avg_corners_last_5', 'avg_shots_last_5', 'avg_goals_last_5']]
-    away_stats.columns = ['match_id', 'away_avg_corners', 'away_avg_shots', 'away_avg_goals']
+    away_stats = team_stats[team_stats['is_home'] == 0][['match_id', 'avg_corners_last_5', 'avg_shots_last_5', 'avg_goals_last_5', 'avg_big_chances_last_5', 'offensive_quality_index']]
+    away_stats.columns = ['match_id', 'away_avg_corners', 'away_avg_shots', 'away_avg_goals', 'away_avg_big_chances', 'away_offensive_quality']
     df_features = df_features.merge(away_stats, on='match_id', how='left')
     
     # Remove linhas com NaN (primeiros jogos da temporada)
@@ -155,8 +168,8 @@ def prepare_training_data(df: pd.DataFrame) -> tuple:
     
     # Features de entrada (X)
     features = [
-        'home_avg_corners', 'home_avg_shots', 'home_avg_goals',
-        'away_avg_corners', 'away_avg_shots', 'away_avg_goals'
+        'home_avg_corners', 'home_avg_shots', 'home_avg_goals', 'home_avg_big_chances', 'home_offensive_quality',
+        'away_avg_corners', 'away_avg_shots', 'away_avg_goals', 'away_avg_big_chances', 'away_offensive_quality'
     ]
     
     X = df_processed[features]

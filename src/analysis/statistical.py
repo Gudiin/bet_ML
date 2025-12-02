@@ -87,6 +87,8 @@ class StatisticalAnalyzer:
         """
         self.n_simulations = 10000
 
+
+
     def _get_distribution_params(self, data: pd.Series) -> tuple:
         """
         Calcula parâmetros da distribuição para uma série de dados.
@@ -362,6 +364,26 @@ class StatisticalAnalyzer:
         # Simula Jogo Completo (FT)
         dist_h, mean_h, var_h = self._get_distribution_params(h_corners_ft)
         dist_a, mean_a, var_a = self._get_distribution_params(a_corners_ft)
+        
+        # Lógica de Integração IA + Estatística (Melhoria Nível 1)
+        # Se tivermos previsão da IA, ajustamos as médias (lambdas) para alinhar com a IA
+        if ml_prediction is not None and ml_prediction > 0:
+            historical_avg = mean_h + mean_a
+            if historical_avg > 0:
+                # Mantém a proporção histórica entre os times
+                prop_h = mean_h / historical_avg
+                
+                # Novos lambdas baseados na IA
+                mean_h = ml_prediction * prop_h
+                mean_a = ml_prediction * (1 - prop_h)
+                
+                print(f"{Colors.YELLOW}🤖 Usando Previsão ML ({ml_prediction:.2f}) como base para Monte Carlo{Colors.RESET}")
+            else:
+                # Fallback se histórico for zero (improvável)
+                mean_h = ml_prediction / 2
+                mean_a = ml_prediction / 2
+        else:
+            print(f"{Colors.CYAN}📊 Usando Média Histórica ({mean_h + mean_a:.2f}) para Monte Carlo{Colors.RESET}")
         
         sim_total = self.simulate_match_event(mean_h, mean_a, var_h, var_a)
         
