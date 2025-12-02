@@ -423,14 +423,21 @@ class StatisticalAnalyzer:
         # Analisa Over/Under para cada linha
         for line in lines_ft:
             add_market('JOGO COMPLETO', sim_total, line, 'Over')
-            # add_market('JOGO COMPLETO', sim_total, line, 'Under') # Focamos em Over por enquanto
+            add_market('JOGO COMPLETO', sim_total, line, 'Under') 
 
         for line in lines_ht:
             add_market('1º TEMPO (HT)', sim_ht, line, 'Over')
+            add_market('1º TEMPO (HT)', sim_ht, line, 'Under')
+
+        for line in lines_ht:
+            add_market('2º TEMPO (FT)', sim_ht, line, 'Over')
+            add_market('2º TEMPO (FT)', sim_ht, line, 'Under')
 
         for line in lines_team:
             add_market('TOTAL MANDANTE', sim_home_total, line, 'Over')
             add_market('TOTAL VISITANTE', sim_away_total, line, 'Over')
+            add_market('TOTAL MANDANTE', sim_home_total, line, 'Under')
+            add_market('TOTAL VISITANTE', sim_away_total, line, 'Under')
 
         # Seleção das Melhores Oportunidades
         # ----------------------------------
