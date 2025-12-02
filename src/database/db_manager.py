@@ -360,3 +360,35 @@ class DBManager:
             ORDER BY m.start_timestamp ASC
         '''
         return pd.read_sql_query(query, conn)
+
+    def get_pending_matches(self) -> list:
+        """Retorna jogos pendentes (agendados no passado ou em andamento)."""
+        conn = self.connect()
+        cursor = conn.cursor()
+        
+        import time
+        now = int(time.time())
+        
+        # Jogos 'scheduled' que já deveriam ter começado OU jogos 'inprogress'
+        query = '''
+            SELECT match_id, home_team_name, away_team_name, status, start_timestamp
+            FROM matches 
+            WHERE (status = 'scheduled' AND start_timestamp < ?)
+               OR (status = 'inprogress')
+            ORDER BY start_timestamp ASC
+        '''
+        
+        cursor.execute(query, (now,))
+        rows = cursor.fetchall()
+        
+        matches = []
+        for row in rows:
+            matches.append({
+                'match_id': row[0],
+                'home_team': row[1],
+                'away_team': row[2],
+                'status': row[3],
+                'start_timestamp': row[4]
+            })
+            
+        return matches

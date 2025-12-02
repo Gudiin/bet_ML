@@ -115,7 +115,8 @@ class SofaScoreScraper:
         
         Regra de Negócio:
             - Scanner de Oportunidades: Busca jogos de hoje/amanhã para análise.
-            - API Economy: Para cada liga, busca a rodada atual e filtra pela data.
+            - API Economy: Para cada liga, busca a rodada atual E adjacentes (+1, -1).
+              Isso resolve o problema de jogos adiados/adiantados que não estão na "currentRound".
             - Se league_ids for None, usa uma lista padrão de ligas principais.
             
         Args:
@@ -133,14 +134,17 @@ class SofaScoreScraper:
             
         print(f"Iniciando Scanner para {date_str} em {len(league_ids)} ligas...")
         
+        processed_matches = set() # Evita duplicatas
+        
         for t_id in league_ids:
             # 1. Descobrir Season ID (assumindo ano atual/recente)
-            # Simplificação: Tenta 2025, depois 24/25
             s_id = self.get_season_id(t_id, "2025")
             if not s_id:
                 s_id = self.get_season_id(t_id, "25/26")
             if not s_id:
                 s_id = self.get_season_id(t_id, "2024") # Fallback
+            if not s_id:
+                s_id = self.get_season_id(t_id, "24/25") # Fallback extra
                 
             if not s_id:
                 continue
@@ -150,45 +154,47 @@ class SofaScoreScraper:
             if not current_round:
                 continue
                 
-            # 3. Baixar Jogos da Rodada
-            # Usamos get_matches mas limitamos a busca apenas à rodada atual
-            # Precisamos adaptar get_matches ou chamar a API diretamente aqui
-            # Para não duplicar código complexo, vamos chamar a API direto aqui simplificado
+            # 3. Baixar Jogos da Rodada Atual e Adjacentes
+            # Verifica current, current+1, current-1 para garantir cobertura
+            rounds_to_check = {current_round, current_round + 1, current_round - 1}
+            # Remove rodadas inválidas (<1)
+            rounds_to_check = {r for r in rounds_to_check if r > 0}
             
-            url = f"https://www.sofascore.com/api/v1/unique-tournament/{t_id}/season/{s_id}/events/round/{current_round}"
-            data = self._fetch_api(url)
+            print(f"   Liga {t_id}: Verificando rodadas {rounds_to_check}...")
             
-            if data and 'events' in data:
-                for event in data['events']:
-                    # Filtra pela data
-                    # Timestamp do evento
-                    evt_ts = event.get('startTimestamp')
-                    if not evt_ts:
-                        continue
+            for r in rounds_to_check:
+                url = f"https://www.sofascore.com/api/v1/unique-tournament/{t_id}/season/{s_id}/events/round/{r}"
+                data = self._fetch_api(url)
+                
+                if data and 'events' in data:
+                    for event in data['events']:
+                        # Filtra pela data
+                        evt_ts = event.get('startTimestamp')
+                        if not evt_ts:
+                            continue
+                            
+                        # Converte timestamp para data string (UTC-3 fixo)
+                        import datetime
+                        tz_offset = datetime.timezone(datetime.timedelta(hours=-3))
+                        evt_date = datetime.datetime.fromtimestamp(evt_ts, tz=tz_offset).strftime('%Y-%m-%d')
                         
-                    # Converte timestamp para data string (UTC para comparar com input)
-                    # O input date_str é YYYY-MM-DD.
-                    # Precisamos cuidar com fuso horário. O SofaScore manda timestamp UTC.
-                    # Se o usuário quer "jogos de hoje (Brasília)", ele passou a data de hoje em Brasília.
-                    # Um jogo 21h BRT é 00h UTC (dia seguinte).
-                    # A comparação ideal é converter o timestamp do jogo para BRT e comparar a data.
-                    
-                    import datetime
-                    # UTC-3 fixo para simplicidade (sem pytz)
-                    tz_offset = datetime.timezone(datetime.timedelta(hours=-3))
-                    evt_date = datetime.datetime.fromtimestamp(evt_ts, tz=tz_offset).strftime('%Y-%m-%d')
-                    
-                    if evt_date == date_str:
-                        # Extrai dados relevantes
-                        match_info = {
-                            'match_id': event['id'],
-                            'tournament': event['tournament']['name'],
-                            'home_team': event['homeTeam']['name'],
-                            'away_team': event['awayTeam']['name'],
-                            'start_time': datetime.datetime.fromtimestamp(evt_ts, tz=tz_offset).strftime('%Y-%m-%d %H:%M'),
-                            'status': event['status']['type']
-                        }
-                        matches.append(match_info)
+                        if evt_date == date_str:
+                            # Evita duplicatas (mesmo jogo em rodadas diferentes? Improvável, mas seguro)
+                            if event['id'] in processed_matches:
+                                continue
+                                
+                            processed_matches.add(event['id'])
+                            
+                            # Extrai dados relevantes
+                            match_info = {
+                                'match_id': event['id'],
+                                'tournament': event['tournament']['name'],
+                                'home_team': event['homeTeam']['name'],
+                                'away_team': event['awayTeam']['name'],
+                                'start_time': datetime.datetime.fromtimestamp(evt_ts, tz=tz_offset).strftime('%Y-%m-%d %H:%M'),
+                                'status': event['status']['type']
+                            }
+                            matches.append(match_info)
                         
         print(f"Scanner finalizado. {len(matches)} jogos encontrados para {date_str}.")
         return matches
@@ -297,3 +303,27 @@ class SofaScoreScraper:
         stats['shots_ot_away_ht'] = extract_val(ht_stats, ['shots on target'], False)
 
         return stats
+
+    def get_match_details(self, match_id: int) -> dict:
+        """Busca detalhes completos de uma partida."""
+        url = f"https://www.sofascore.com/api/v1/event/{match_id}"
+        data = self._fetch_api(url)
+        
+        if not data or 'event' not in data:
+            return None
+            
+        ev = data['event']
+        return {
+            'id': ev['id'],
+            'tournament': ev.get('tournament', {}).get('name', 'Unknown'),
+            'season_id': ev.get('season', {}).get('id', 0),
+            'round': ev.get('roundInfo', {}).get('round', 0),
+            'status': ev.get('status', {}).get('type', 'unknown'),
+            'timestamp': ev.get('startTimestamp', 0),
+            'home_id': ev['homeTeam']['id'],
+            'home_name': ev['homeTeam']['name'],
+            'away_id': ev['awayTeam']['id'],
+            'away_name': ev['awayTeam']['name'],
+            'home_score': ev.get('homeScore', {}).get('display', 0),
+            'away_score': ev.get('awayScore', {}).get('display', 0)
+        }

@@ -380,14 +380,25 @@ def api_analyze_match():
     url = data.get('url', '')
     
     match_id_search = re.search(r'id:(\d+)', url)
-    if not match_id_search:
-        # Tenta extrair ID diretamente se for número
-        if url.isdigit():
-            match_id = url
-        else:
-            return jsonify({'error': 'ID do jogo não encontrado na URL'}), 400
-    else:
+    if match_id_search:
         match_id = match_id_search.group(1)
+    elif url.isdigit():
+        match_id = url
+    else:
+        # Tenta extrair ID da URL (última parte numérica)
+        # Ex: https://www.sofascore.com/.../1234567
+        # Ex: https://www.sofascore.com/.../slug/1234567
+        parts = url.split('/')
+        last_part = parts[-1]
+        if last_part.isdigit():
+            match_id = last_part
+        else:
+            # Tenta fragmento #id:12345
+            fragment_search = re.search(r'#id:(\d+)', url)
+            if fragment_search:
+                match_id = fragment_search.group(1)
+            else:
+                return jsonify({'error': 'ID do jogo não encontrado na URL'}), 400
     
     with state_lock:
         if system_state['is_running']:
@@ -843,10 +854,153 @@ def _analyze_match_task(match_id: str) -> Dict[str, Any]:
         
         emit_log(f'⚽ Jogo: {match_name}', 'highlight')
         
-        # ... (rest of analysis logic would go here, but for now we return basic info)
-        # In a real scenario, we would call the full analysis pipeline
+        # 1. Carregar Modelo
+        update_progress(40, 'Carregando modelo ML...')
+        predictor = None
+        model_loaded = False
         
-        return {'match_name': match_name}
+        if use_improved:
+            try:
+                from src.ml.model_improved import ImprovedCornerPredictor
+                predictor = ImprovedCornerPredictor()
+                if predictor.load():
+                    model_loaded = True
+                    emit_log('🤖 Modelo ML carregado.', 'info')
+            except ImportError:
+                pass
+        
+        if not model_loaded:
+            from src.ml.model import CornerPredictor
+            predictor = CornerPredictor()
+            if predictor.load():
+                model_loaded = True
+        
+        if not model_loaded:
+            emit_log('⚠️ Modelo não encontrado. Treine o sistema primeiro.', 'warning')
+            return {'error': 'Modelo não treinado'}
+
+        # 2. Buscar Histórico
+        update_progress(60, 'Buscando histórico dos times...')
+        db = DBManager()
+        df_history = db.get_historical_data()
+        db.close()
+        
+        if df_history.empty:
+            return {'error': 'Banco de dados vazio'}
+            
+        # 3. Preparar Features
+        h_games = df_history[
+            (df_history['home_team_name'] == ev['homeTeam']['name']) | 
+            (df_history['away_team_name'] == ev['homeTeam']['name'])
+        ].sort_values('start_timestamp').tail(5)
+        
+        a_games = df_history[
+            (df_history['home_team_name'] == ev['awayTeam']['name']) | 
+            (df_history['away_team_name'] == ev['awayTeam']['name'])
+        ].sort_values('start_timestamp').tail(5)
+        
+        if len(h_games) < 3 or len(a_games) < 3:
+            emit_log(f'⚠️ Dados insuficientes: {ev["homeTeam"]["name"]} ({len(h_games)}), {ev["awayTeam"]["name"]} ({len(a_games)})', 'warning')
+            # Ainda retorna resultado, mas com aviso
+        
+        # Calcula features manualmente
+        def get_stats(games, team_name):
+            corners = []
+            shots = []
+            goals = []
+            corners_ht = []
+            for _, row in games.iterrows():
+                if row['home_team_name'] == team_name:
+                    corners.append(row['corners_home_ft'])
+                    shots.append(row['shots_ot_home_ft'])
+                    goals.append(row['home_score'])
+                    corners_ht.append(row['corners_home_ht'])
+                else:
+                    corners.append(row['corners_away_ft'])
+                    shots.append(row['shots_ot_away_ft'])
+                    goals.append(row['away_score'])
+                    corners_ht.append(row['corners_away_ht'])
+            return corners, shots, goals, corners_ht
+
+        h_c, h_s, h_g, h_cht = get_stats(h_games, ev['homeTeam']['name'])
+        a_c, a_s, a_g, a_cht = get_stats(a_games, ev['awayTeam']['name'])
+        
+        def avg(l): return sum(l)/len(l) if l else 0
+        
+        features = [
+            avg(h_c), avg(h_s), avg(h_g),
+            avg(a_c), avg(a_s), avg(a_g),
+            avg(h_cht), avg(a_cht),
+            avg(h_c) + avg(a_c),
+            avg(h_c) - avg(a_c),
+            avg(h_c[-3:]) - avg(h_c),
+            avg(a_c[-3:]) - avg(a_c)
+        ]
+        
+        # 4. Previsão
+        update_progress(80, 'Calculando previsão...')
+        pred = predictor.predict([features])
+        ml_prediction = float(pred[0])
+        
+        import numpy as np
+        std_dev = (np.std(h_c) + np.std(a_c)) / 2
+        confidence = max(0.5, min(0.95, 1.0 - (std_dev / 10.0)))
+        if ml_prediction > 10.5 or ml_prediction < 8.5:
+            confidence += 0.1
+        confidence = min(0.99, confidence)
+        
+        best_bet = 'Over 9.5' if ml_prediction > 10 else 'Under 10.5'
+        
+        # 5. Salvar no Banco de Dados (CRÍTICO para auto-refresh funcionar)
+        update_progress(90, 'Salvando no banco...')
+        db = DBManager()
+        
+        try:
+            # Salva o jogo (necessário para aparecer no histórico e ser atualizado)
+            match_data = {
+                'id': ev['id'],
+                'tournament': ev.get('tournament', {}).get('name', 'Unknown'),
+                'season_id': ev.get('season', {}).get('id', 0),
+                'round': ev.get('roundInfo', {}).get('round', 0),
+                'status': ev.get('status', {}).get('type', 'unknown'),
+                'timestamp': ev.get('startTimestamp', 0),
+                'home_id': ev['homeTeam']['id'],
+                'home_name': ev['homeTeam']['name'],
+                'away_id': ev['awayTeam']['id'],
+                'away_name': ev['awayTeam']['name'],
+                'home_score': ev.get('homeScore', {}).get('display', 0),
+                'away_score': ev.get('awayScore', {}).get('display', 0)
+            }
+            db.save_match(match_data)
+            
+            # Salva a previsão ML
+            db.save_prediction(
+                match_id=ev['id'],
+                pred_type='ML',
+                value=ml_prediction,
+                market=best_bet,
+                prob=confidence,
+                odds=1.85,  # Placeholder
+                category='Analysis',
+                market_group='Corners',
+                verbose=False
+            )
+            
+            emit_log('💾 Jogo salvo no banco. Auto-refresh funcionará automaticamente.', 'success')
+        finally:
+            db.close()
+        
+        emit_log(f'✅ Análise Concluída: {best_bet} (Conf: {confidence*100:.0f}%)', 'success')
+        update_progress(100, 'Concluído')
+        
+        return {
+            'match_name': match_name,
+            'ml_prediction': round(ml_prediction, 1),
+            'confidence': round(confidence * 100, 1),
+            'best_bet': best_bet,
+            'home_avg_corners': round(avg(h_c), 1),
+            'away_avg_corners': round(avg(a_c), 1)
+        }
         
     except Exception as e:
         emit_log(f'❌ Erro: {str(e)}', 'error')
@@ -866,6 +1020,7 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
     """
     from datetime import datetime, timedelta, timezone
     import random # Placeholder for ML prediction
+    import time # For small delays if needed
     
     # 1. Determina a data (Com Fuso Horário de Brasília - UTC-3)
     # Cria timezone UTC-3
@@ -932,13 +1087,16 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
         # Carrega histórico para features
         df_history = db.get_historical_data()
         
+        if df_history.empty:
+            emit_log('⚠️ Banco de dados vazio! O Scanner precisa de histórico para funcionar.', 'warning')
+            emit_log('💡 Dica: Execute "Atualizar Banco de Dados" primeiro.', 'info')
+        
         for i, match in enumerate(matches):
             progress = 20 + int((i / total) * 75)
             match_name = f"{match['home_team']} vs {match['away_team']}"
             
-            if i % 5 == 0 or i == total - 1:
-                emit_log(f'[{i+1}/{total}] Analisando: {match_name}', 'info')
-            
+            # Log de progresso explícito
+            emit_log(f'[{i+1}/{total}] Analisando: {match_name}', 'info')
             update_progress(progress, f'Analisando {i+1}/{total}')
             
             try:
@@ -962,10 +1120,9 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
                     ].sort_values('start_timestamp').tail(5)
                     
                     # --- FILTRO DE LIXO (Data Sufficiency) ---
-                    # Regra de Negócio: Se não tiver pelo menos 3 jogos, pula silenciosamente.
+                    # Regra de Negócio: Se não tiver pelo menos 3 jogos, pula.
                     if len(h_games) < 3 or len(a_games) < 3:
-                        # Opcional: Logar em debug se necessário, mas o requisito é "silencioso" ou "sem avisar erro"
-                        # Vamos apenas pular.
+                        emit_log(f'   ⚠️ Pulo: Dados insuficientes - {home_team}: {len(h_games)} jogos, {away_team}: {len(a_games)} jogos', 'warning')
                         continue 
                     
                     # Calcula features manualmente (equivalente a prepare_improved_features)
@@ -1013,9 +1170,15 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
                     if ml_prediction > 10.5 or ml_prediction < 8.5:
                         confidence += 0.1
                     confidence = min(0.99, confidence)
+                    
+                    emit_log(f'   🤖 Previsão ML: {ml_prediction:.1f} escanteios (Conf: {confidence*100:.0f}%)', 'highlight')
                         
                 else:
-                    # Se não tem modelo ou histórico vazio, pula (não gera simulação aleatória para scanner sério)
+                    # Logs explícitos de falha
+                    if not model_loaded:
+                        emit_log('   ⚠️ Pulo: Modelo ML não carregado.', 'warning')
+                    elif df_history.empty:
+                        emit_log('   ⚠️ Pulo: Histórico vazio.', 'warning')
                     continue
                 
                 # --- Persistência ---
@@ -1077,8 +1240,12 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
                     }
                     
                     # Filtra apenas oportunidades com alta confiança para a UI
-                    if result['confidence'] >= 70:
+                    # Reduzido para 60% para mostrar mais resultados
+                    if result['confidence'] >= 60:
                         opportunities.append(result)
+                        emit_log(f'   ✅ Oportunidade: {best_bet} (@1.85)', 'success')
+                    else:
+                        emit_log(f'   ℹ️ Rejeitado: Confiança baixa ({result["confidence"]:.0f}%)', 'info')
                         
                 except Exception as e:
                     print(f"Erro ao persistir dados do jogo {match_name}: {e}")
@@ -1102,6 +1269,108 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
         db.close()
 
 
+
+
+def _update_pending_matches_task() -> None:
+    """
+    Tarefa para atualizar jogos pendentes (ao vivo ou finalizados recentemente).
+    """
+    emit_log('🔄 Verificando jogos pendentes...', 'info')
+    update_progress(10, 'Buscando pendências...')
+    
+    db = DBManager()
+    pending = db.get_pending_matches()
+    
+    if not pending:
+        emit_log('✅ Nenhum jogo pendente para atualizar.', 'success')
+        update_progress(100, 'Concluído')
+        db.close()
+        return
+        
+    emit_log(f'📋 Encontrados {len(pending)} jogos para atualizar.', 'info')
+    
+    with state_lock:
+        headless = system_state['config']['headless']
+        
+    scraper = SofaScoreScraper(headless=headless)
+    
+    try:
+        scraper.start()
+        update_progress(20, 'Iniciando atualização...')
+        
+        total = len(pending)
+        updated_count = 0
+        
+        for i, match in enumerate(pending):
+            m_id = match['match_id']
+            m_name = f"{match['home_team']} vs {match['away_team']}"
+            
+            emit_log(f'[{i+1}/{total}] Atualizando: {m_name}...', 'info')
+            
+            # 1. Busca detalhes
+            details = scraper.get_match_details(m_id)
+            if not details:
+                emit_log(f'⚠️ Falha ao buscar dados de {m_name}', 'warning')
+                continue
+                
+            new_status = details['status']
+            
+            # 2. Atualiza Match no DB
+            db.save_match(details)
+            
+            # 3. Se finalizou, busca estatísticas
+            if new_status == 'finished':
+                stats = scraper.get_match_stats(m_id)
+                db.save_stats(m_id, stats)
+                emit_log(f'   ✅ Finalizado! Placar: {details["home_score"]}-{details["away_score"]}', 'success')
+                updated_count += 1
+            elif new_status == 'inprogress':
+                emit_log(f'   ⚽ Em andamento: {details["home_score"]}-{details["away_score"]}', 'highlight')
+            else:
+                emit_log(f'   ⏳ Status: {new_status}', 'info')
+                
+            time.sleep(1) # Delay para evitar bloqueio
+            update_progress(20 + int((i/total)*70), f'Atualizando {i+1}/{total}')
+            
+        if updated_count > 0:
+            emit_log(f'✅ {updated_count} jogos foram finalizados e atualizados.', 'success')
+            # Trigger feedback loop
+            db.check_predictions()
+        else:
+            emit_log('✅ Atualização concluída. Nenhum jogo novo finalizado.', 'success')
+            
+        update_progress(100, 'Concluído')
+            
+    except Exception as e:
+        emit_log(f'❌ Erro na atualização: {str(e)}', 'error')
+    finally:
+        scraper.stop()
+        db.close()
+
+@app.route('/api/matches/update_pending', methods=['POST'])
+def api_update_pending():
+    """Endpoint para forçar atualização de jogos pendentes."""
+    with state_lock:
+        if system_state['is_running']:
+            return jsonify({'error': 'Já existe uma tarefa em execução'}), 400
+        system_state['is_running'] = True
+        system_state['current_task'] = 'Atualizando Pendentes'
+        system_state['progress'] = 0
+    
+    def run_task():
+        try:
+            _update_pending_matches_task()
+        finally:
+            with state_lock:
+                system_state['is_running'] = False
+                system_state['current_task'] = None
+                system_state['progress'] = 100
+    
+    thread = threading.Thread(target=run_task)
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({'status': 'started'})
 
 # ============================================================================
 # Inicialização

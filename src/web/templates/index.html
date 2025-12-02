@@ -474,6 +474,13 @@
                   <i class="bi bi-cloud-download me-2"></i>Atualizar Banco
                 </button>
                 <button
+                  id="btnUpdatePending"
+                  class="btn btn-warning"
+                  onclick="updatePendingMatches()"
+                >
+                  <i class="bi bi-arrow-repeat me-2"></i>Atualizar Pendentes
+                </button>
+                <button
                   id="btnTrain"
                   class="btn btn-success"
                   onclick="trainModel()"
@@ -1097,7 +1104,7 @@
 
         // Disable/enable buttons
         document
-          .querySelectorAll("#btnUpdateDB, #btnTrain, #btnAnalyze, #btnStartScanner")
+          .querySelectorAll("#btnUpdateDB, #btnTrain, #btnAnalyze, #btnStartScanner, #btnUpdatePending")
           .forEach((btn) => {
             btn.disabled = running;
           });
@@ -1109,6 +1116,26 @@
       function updateDatabase() {
         if (isRunning) return;
         new bootstrap.Modal(document.getElementById('updateModal')).show();
+      }
+
+      function updatePendingMatches() {
+        if (isRunning) return;
+        setStatus(true, "Atualizando jogos pendentes...");
+
+        $.ajax({
+            url: "/api/matches/update_pending",
+            method: "POST",
+            contentType: "application/json"
+        })
+        .done(function() {
+            showToast("Atualização iniciada", "Verificando jogos pendentes...", "info");
+            pollStatus();
+        })
+        .fail(function(xhr) {
+            const error = xhr.responseJSON?.error || "Erro desconhecido";
+            showToast("Erro", error, "error");
+            setStatus(false);
+        });
       }
 
       function confirmUpdate() {
@@ -1883,13 +1910,34 @@
       }
 
       function runVigilanteCheck() {
-          $.get("/api/analyses").done(function(analyses) {
-              const liveMatches = analyses.filter(a => a.status === 'inprogress');
+          console.log("🔍 Vigilante: Verificando jogos pendentes e ao vivo...");
+          
+          // 1. Primeiro, atualiza jogos pendentes (scheduled -> inprogress)
+          // Isso garante que jogos que começaram sejam marcados como ao vivo
+          $.ajax({
+              url: "/api/matches/update_pending",
+              method: "POST",
+              contentType: "application/json",
+              silent: true // Não mostra toast para não poluir a UI
+          })
+          .done(function() {
+              console.log("✅ Vigilante: Pendentes atualizados.");
               
-              if (liveMatches.length > 0) {
-                  showToast("Live Update", `Atualizando ${liveMatches.length} jogos ao vivo...`, "info");
-                  updateNextMatch(liveMatches, 0);
-              }
+              // 2. Depois, recarrega a lista de análises para pegar jogos ao vivo
+              $.get("/api/analyses").done(function(analyses) {
+                  const liveMatches = analyses.filter(a => a.status === 'inprogress');
+                  
+                  if (liveMatches.length > 0) {
+                      console.log(`⚽ Vigilante: ${liveMatches.length} jogos ao vivo encontrados.`);
+                      // Atualiza a tabela de histórico para mostrar os novos status
+                      loadHistory();
+                  } else {
+                      console.log("ℹ️ Vigilante: Nenhum jogo ao vivo no momento.");
+                  }
+              });
+          })
+          .fail(function(xhr) {
+              console.error("❌ Vigilante: Erro ao atualizar pendentes:", xhr);
           });
       }
 
