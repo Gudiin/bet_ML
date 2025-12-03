@@ -370,14 +370,30 @@ class StatisticalAnalyzer:
         if ml_prediction is not None and ml_prediction > 0:
             historical_avg = mean_h + mean_a
             if historical_avg > 0:
+                # 🛡️ CLAMPER: Segurança contra Alucinação do ML
+                # Não permite que ML desvie mais de 30% da média histórica
+                # Isso protege contra erros de feature ou bugs no modelo
+                max_deviation = 0.30  # 30% de margem
+                lower_bound = historical_avg * (1 - max_deviation)
+                upper_bound = historical_avg * (1 + max_deviation)
+                
+                # Clamp (limita) a previsão do ML
+                ml_prediction_clamped = np.clip(ml_prediction, lower_bound, upper_bound)
+                
+                # Se houve clamp, avisa o usuário
+                if ml_prediction_clamped != ml_prediction:
+                    print(f"{Colors.RED}⚠️ CLAMPER ATIVADO!{Colors.RESET}")
+                    print(f"   ML original: {ml_prediction:.2f} → Ajustado: {ml_prediction_clamped:.2f}")
+                    print(f"   Limite: [{lower_bound:.2f}, {upper_bound:.2f}] (±30% de {historical_avg:.2f})")
+                
                 # Mantém a proporção histórica entre os times
                 prop_h = mean_h / historical_avg
                 
-                # Novos lambdas baseados na IA
-                mean_h = ml_prediction * prop_h
-                mean_a = ml_prediction * (1 - prop_h)
+                # Novos lambdas baseados na IA (clamped)
+                mean_h = ml_prediction_clamped * prop_h
+                mean_a = ml_prediction_clamped * (1 - prop_h)
                 
-                print(f"{Colors.YELLOW}🤖 Usando Previsão ML ({ml_prediction:.2f}) como base para Monte Carlo{Colors.RESET}")
+                print(f"{Colors.YELLOW}🤖 Usando Previsão ML ({ml_prediction_clamped:.2f}) como base para Monte Carlo{Colors.RESET}")
             else:
                 # Fallback se histórico for zero (improvável)
                 mean_h = ml_prediction / 2

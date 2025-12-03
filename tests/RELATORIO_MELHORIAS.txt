@@ -197,12 +197,7 @@ Distribuição de acertos do modelo final:
 -------------------------------------------------
 1. INTEGRAÇÃO REAL (CÉREBRO IA + CORAÇÃO ESTATÍSTICO)
    • Análise: Atualmente, o StatisticalAnalyzer calcula a média (lambda) apenas com base no histórico.
-   • Ação: Fazer o Monte Carlo usar a previsão da IA (ml_prediction) como centro da simulação.
-   • Impacto: CRÍTICO. Alinha a estatística com a inteligência do modelo.
-
-2. AJUSTE DE OBJETIVO DA IA
-   • Análise: O modelo atual usa regressão padrão (L2 loss).
-   • Ação: Alterar objetivo do LightGBM para objective='poisson'.
+   • Ação: Fazer o Monte Carlo usar a previsão da IA (ml_prediction) features_v2.pyfeatures_v2.pyfeatures_v2.pyfeatures_v2.py
    • Impacto: ALTO. Ideal para contagem de escanteios (números inteiros não negativos).
 
 🚀 NÍVEL 2: ENRIQUECIMENTO DE DADOS (CURTO PRAZO)

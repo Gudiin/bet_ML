@@ -136,7 +136,7 @@ class ImprovedCornerPredictor:
         
         if HAS_LGB:
             print("Otimizando LightGBM...")
-            model = lgb.LGBMRegressor(random_state=42, verbosity=-1)
+            model = lgb.LGBMRegressor(random_state=42, verbosity=-1, objective='poisson')
             param_grid = {
                 'n_estimators': [50, 100, 200],
                 'learning_rate': [0.01, 0.05, 0.1],
