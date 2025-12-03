@@ -47,6 +47,7 @@ from src.database.db_manager import DBManager
 from src.scrapers.sofascore import SofaScoreScraper
 from src.ml.feature_engineering import prepare_training_data
 from src.ml.model import CornerPredictor
+from src.ml.feature_extraction import calculate_features_for_match
 from src.analysis.statistical import StatisticalAnalyzer
 import pandas as pd
 
@@ -815,6 +816,71 @@ def _train_model_task(mode: str = 'standard') -> None:
     update_progress(100, 'Treinamento concluído')
 
 
+def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_history: pd.DataFrame, db: DBManager) -> Dict[str, Any]:
+    """
+    Lógica central de previsão e persistência.
+    Compartilhada entre 'Analisar Jogo' e 'Scanner'.
+    """
+    home_name = match_data['home_name']
+    away_name = match_data['away_name']
+    match_id = match_data['id']
+    
+    # 1. Preparar Features
+    features = calculate_features_for_match(df_history, home_name, away_name)
+    
+    if features is None:
+        return {'error': f'Dados insuficientes (mínimo 3 jogos) para {home_name} vs {away_name}'}
+    
+    # Recupera médias para exibição
+    h_avg = features[0]
+    a_avg = features[3]
+    
+    # 2. Previsão
+    pred = predictor.predict([features])
+    ml_prediction = float(pred[0])
+    
+    # 3. Confiança e Best Bet
+    avg_total = features[0] + features[3]
+    diff = abs(ml_prediction - avg_total)
+    
+    confidence = 0.70
+    if diff < 2.0: 
+        confidence += 0.1
+    if ml_prediction > 10.5 or ml_prediction < 8.5: 
+        confidence += 0.1
+    confidence = min(0.95, confidence)
+    
+    best_bet = 'Over 9.5' if ml_prediction > 10 else 'Under 10.5'
+    
+    # 4. Salvar no Banco
+    # Salva o jogo
+    db.save_match(match_data)
+    
+    # Salva a previsão
+    db.save_prediction(
+        match_id=match_id,
+        pred_type='ML',
+        value=ml_prediction,
+        market=best_bet,
+        prob=confidence,
+        odds=1.85, # Placeholder
+        category='Analysis',
+        market_group='Corners',
+        verbose=False
+    )
+    
+    return {
+        'match_name': f"{home_name} vs {away_name}",
+        'ml_prediction': round(ml_prediction, 1),
+        'confidence': round(confidence * 100, 1),
+        'best_bet': best_bet,
+        'home_avg_corners': round(h_avg, 1),
+        'away_avg_corners': round(a_avg, 1),
+        'match_id': match_id
+    }
+
+
+
 def _analyze_match_task(match_id: str) -> Dict[str, Any]:
     """
     Tarefa de análise de partida.
@@ -840,18 +906,13 @@ def _analyze_match_task(match_id: str) -> Dict[str, Any]:
         update_progress(20, 'Buscando dados da partida...')
         
         # Get Match Details
-        api_url = f"https://www.sofascore.com/api/v1/event/{match_id}"
-        ev_data = scraper._fetch_api(api_url)
+        details = scraper.get_match_details(match_id)
         
-        if not ev_data or 'event' not in ev_data:
+        if not details:
             emit_log('❌ Erro ao buscar dados do jogo.', 'error')
             return {'error': 'Dados não encontrados'}
         
-        ev = ev_data['event']
-        home_id = ev['homeTeam']['id']
-        away_id = ev['awayTeam']['id']
-        match_name = f"{ev['homeTeam']['name']} vs {ev['awayTeam']['name']}"
-        
+        match_name = f"{details['home_name']} vs {details['away_name']}"
         emit_log(f'⚽ Jogo: {match_name}', 'highlight')
         
         # 1. Carregar Modelo
@@ -863,7 +924,7 @@ def _analyze_match_task(match_id: str) -> Dict[str, Any]:
             try:
                 from src.ml.model_improved import ImprovedCornerPredictor
                 predictor = ImprovedCornerPredictor()
-                if predictor.load():
+                if predictor.load_model():
                     model_loaded = True
                     emit_log('🤖 Modelo ML carregado.', 'info')
             except ImportError:
@@ -883,124 +944,28 @@ def _analyze_match_task(match_id: str) -> Dict[str, Any]:
         update_progress(60, 'Buscando histórico dos times...')
         db = DBManager()
         df_history = db.get_historical_data()
-        db.close()
         
         if df_history.empty:
+            db.close()
             return {'error': 'Banco de dados vazio'}
             
-        # 3. Preparar Features
-        h_games = df_history[
-            (df_history['home_team_name'] == ev['homeTeam']['name']) | 
-            (df_history['away_team_name'] == ev['homeTeam']['name'])
-        ].sort_values('start_timestamp').tail(5)
-        
-        a_games = df_history[
-            (df_history['home_team_name'] == ev['awayTeam']['name']) | 
-            (df_history['away_team_name'] == ev['awayTeam']['name'])
-        ].sort_values('start_timestamp').tail(5)
-        
-        if len(h_games) < 3 or len(a_games) < 3:
-            emit_log(f'⚠️ Dados insuficientes: {ev["homeTeam"]["name"]} ({len(h_games)}), {ev["awayTeam"]["name"]} ({len(a_games)})', 'warning')
-            # Ainda retorna resultado, mas com aviso
-        
-        # Calcula features manualmente
-        def get_stats(games, team_name):
-            corners = []
-            shots = []
-            goals = []
-            corners_ht = []
-            for _, row in games.iterrows():
-                if row['home_team_name'] == team_name:
-                    corners.append(row['corners_home_ft'])
-                    shots.append(row['shots_ot_home_ft'])
-                    goals.append(row['home_score'])
-                    corners_ht.append(row['corners_home_ht'])
-                else:
-                    corners.append(row['corners_away_ft'])
-                    shots.append(row['shots_ot_away_ft'])
-                    goals.append(row['away_score'])
-                    corners_ht.append(row['corners_away_ht'])
-            return corners, shots, goals, corners_ht
-
-        h_c, h_s, h_g, h_cht = get_stats(h_games, ev['homeTeam']['name'])
-        a_c, a_s, a_g, a_cht = get_stats(a_games, ev['awayTeam']['name'])
-        
-        def avg(l): return sum(l)/len(l) if l else 0
-        
-        features = [
-            avg(h_c), avg(h_s), avg(h_g),
-            avg(a_c), avg(a_s), avg(a_g),
-            avg(h_cht), avg(a_cht),
-            avg(h_c) + avg(a_c),
-            avg(h_c) - avg(a_c),
-            avg(h_c[-3:]) - avg(h_c),
-            avg(a_c[-3:]) - avg(a_c)
-        ]
-        
-        # 4. Previsão
+        # 3. Processar Previsão (Lógica Unificada)
         update_progress(80, 'Calculando previsão...')
-        pred = predictor.predict([features])
-        ml_prediction = float(pred[0])
-        
-        import numpy as np
-        std_dev = (np.std(h_c) + np.std(a_c)) / 2
-        confidence = max(0.5, min(0.95, 1.0 - (std_dev / 10.0)))
-        if ml_prediction > 10.5 or ml_prediction < 8.5:
-            confidence += 0.1
-        confidence = min(0.99, confidence)
-        
-        best_bet = 'Over 9.5' if ml_prediction > 10 else 'Under 10.5'
-        
-        # 5. Salvar no Banco de Dados (CRÍTICO para auto-refresh funcionar)
-        update_progress(90, 'Salvando no banco...')
-        db = DBManager()
         
         try:
-            # Salva o jogo (necessário para aparecer no histórico e ser atualizado)
-            match_data = {
-                'id': ev['id'],
-                'tournament': ev.get('tournament', {}).get('name', 'Unknown'),
-                'season_id': ev.get('season', {}).get('id', 0),
-                'round': ev.get('roundInfo', {}).get('round', 0),
-                'status': ev.get('status', {}).get('type', 'unknown'),
-                'timestamp': ev.get('startTimestamp', 0),
-                'home_id': ev['homeTeam']['id'],
-                'home_name': ev['homeTeam']['name'],
-                'away_id': ev['awayTeam']['id'],
-                'away_name': ev['awayTeam']['name'],
-                'home_score': ev.get('homeScore', {}).get('display', 0),
-                'away_score': ev.get('awayScore', {}).get('display', 0)
-            }
-            db.save_match(match_data)
+            result = _process_match_prediction(details, predictor, df_history, db)
             
-            # Salva a previsão ML
-            db.save_prediction(
-                match_id=ev['id'],
-                pred_type='ML',
-                value=ml_prediction,
-                market=best_bet,
-                prob=confidence,
-                odds=1.85,  # Placeholder
-                category='Analysis',
-                market_group='Corners',
-                verbose=False
-            )
-            
-            emit_log('💾 Jogo salvo no banco. Auto-refresh funcionará automaticamente.', 'success')
+            if 'error' in result:
+                emit_log(f"⚠️ {result['error']}", 'warning')
+            else:
+                emit_log(f"✅ Análise Concluída: {result['best_bet']} (Conf: {result['confidence']}%)", 'success')
+                emit_log('💾 Jogo salvo no banco. Auto-refresh funcionará automaticamente.', 'success')
+                
         finally:
             db.close()
         
-        emit_log(f'✅ Análise Concluída: {best_bet} (Conf: {confidence*100:.0f}%)', 'success')
         update_progress(100, 'Concluído')
-        
-        return {
-            'match_name': match_name,
-            'ml_prediction': round(ml_prediction, 1),
-            'confidence': round(confidence * 100, 1),
-            'best_bet': best_bet,
-            'home_avg_corners': round(avg(h_c), 1),
-            'away_avg_corners': round(avg(a_c), 1)
-        }
+        return result
         
     except Exception as e:
         emit_log(f'❌ Erro: {str(e)}', 'error')
@@ -1019,8 +984,8 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
         3. API Economy: O scraper agora busca apenas a rodada atual (implementado no sofascore.py).
     """
     from datetime import datetime, timedelta, timezone
-    import random # Placeholder for ML prediction
-    import time # For small delays if needed
+    import numpy as np
+    import time
     
     # 1. Determina a data (Com Fuso Horário de Brasília - UTC-3)
     # Cria timezone UTC-3
@@ -1100,156 +1065,37 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
             update_progress(progress, f'Analisando {i+1}/{total}')
             
             try:
-                ml_prediction = 0
-                confidence = 0
-                
-                # --- Lógica de Previsão ML ---
-                if model_loaded and not df_history.empty:
-                    home_team = match['home_team']
-                    away_team = match['away_team']
-                    
-                    # Filtra jogos anteriores
-                    h_games = df_history[
-                        (df_history['home_team_name'] == home_team) | 
-                        (df_history['away_team_name'] == home_team)
-                    ].sort_values('start_timestamp').tail(5)
-                    
-                    a_games = df_history[
-                        (df_history['home_team_name'] == away_team) | 
-                        (df_history['away_team_name'] == away_team)
-                    ].sort_values('start_timestamp').tail(5)
-                    
-                    # --- FILTRO DE LIXO (Data Sufficiency) ---
-                    # Regra de Negócio: Se não tiver pelo menos 3 jogos, pula.
-                    if len(h_games) < 3 or len(a_games) < 3:
-                        emit_log(f'   ⚠️ Pulo: Dados insuficientes - {home_team}: {len(h_games)} jogos, {away_team}: {len(a_games)} jogos', 'warning')
-                        continue 
-                    
-                    # Calcula features manualmente (equivalente a prepare_improved_features)
-                    def get_stats(games, team_name):
-                        corners = []
-                        shots = []
-                        goals = []
-                        corners_ht = []
-                        for _, row in games.iterrows():
-                            if row['home_team_name'] == team_name:
-                                corners.append(row['corners_home_ft'])
-                                shots.append(row['shots_ot_home_ft'])
-                                goals.append(row['home_score'])
-                                corners_ht.append(row['corners_home_ht'])
-                            else:
-                                corners.append(row['corners_away_ft'])
-                                shots.append(row['shots_ot_away_ft'])
-                                goals.append(row['away_score'])
-                                corners_ht.append(row['corners_away_ht'])
-                        return corners, shots, goals, corners_ht
-
-                    h_c, h_s, h_g, h_cht = get_stats(h_games, home_team)
-                    a_c, a_s, a_g, a_cht = get_stats(a_games, away_team)
-                    
-                    def avg(l): return sum(l)/len(l) if l else 0
-                    
-                    # Features vector
-                    features = [
-                        avg(h_c), avg(h_s), avg(h_g),          # Home Avg 5
-                        avg(a_c), avg(a_s), avg(a_g),          # Away Avg 5
-                        avg(h_cht), avg(a_cht),                # HT Corners
-                        avg(h_c) + avg(a_c),                   # Total Expected
-                        avg(h_c) - avg(a_c),                   # Diff
-                        avg(h_c[-3:]) - avg(h_c),              # Home Trend
-                        avg(a_c[-3:]) - avg(a_c)               # Away Trend
-                    ]
-                    
-                    # Predict
-                    pred = predictor.predict([features])
-                    ml_prediction = float(pred[0])
-                    
-                    # Confiança baseada na consistência (desvio padrão) e força do sinal
-                    std_dev = (np.std(h_c) + np.std(a_c)) / 2
-                    confidence = max(0.5, min(0.95, 1.0 - (std_dev / 10.0)))
-                    if ml_prediction > 10.5 or ml_prediction < 8.5:
-                        confidence += 0.1
-                    confidence = min(0.99, confidence)
-                    
-                    emit_log(f'   🤖 Previsão ML: {ml_prediction:.1f} escanteios (Conf: {confidence*100:.0f}%)', 'highlight')
-                        
-                else:
-                    # Logs explícitos de falha
-                    if not model_loaded:
-                        emit_log('   ⚠️ Pulo: Modelo ML não carregado.', 'warning')
-                    elif df_history.empty:
-                        emit_log('   ⚠️ Pulo: Histórico vazio.', 'warning')
+                # Se não tiver modelo ou histórico, pula
+                if not model_loaded or df_history.empty:
+                    emit_log('   ⚠️ Pulo: Modelo ou histórico indisponível.', 'warning')
                     continue
                 
-                # --- Persistência ---
+                # 1. Busca detalhes COMPLETOS do jogo (Necessário para análise correta)
+                # Isso resolve o problema de "Analisar Jogo" vs "Scanner"
+                match_id = match.get('match_id')
+                if not match_id:
+                    continue
+                    
+                details = scraper.get_match_details(match_id)
+                if not details:
+                    emit_log(f'   ⚠️ Erro ao buscar detalhes de {match_name}', 'warning')
+                    continue
                 
-                try:
-                    # 1. Garante ID inteiro
-                    match_id_val = match.get('match_id')
-                    if not match_id_val:
-                        match_id_val = int(hash(match_name + date_str) % 100000000) # Hash int seguro
-                    else:
-                        match_id_val = int(match_id_val)
-                    
-                    # 2. Salvar Match (Necessário para JOINs no histórico)
-                    # Reconstrói match_data compatível com save_match
-                    try:
-                        ts = int(datetime.strptime(match['start_time'], '%Y-%m-%d %H:%M').timestamp())
-                    except:
-                        ts = int(time.time())
-
-                    match_data = {
-                        'id': match_id_val,
-                        'tournament': match.get('tournament', 'Unknown'),
-                        'season_id': 0, # Placeholder
-                        'round': 0, # Placeholder
-                        'status': 'scheduled', # Importante: scheduled para não confundir com finished
-                        'timestamp': ts,
-                        'home_id': 0, # Placeholder (scraper não retornou ID)
-                        'home_name': match['home_team'],
-                        'away_id': 0, # Placeholder
-                        'away_name': match['away_team'],
-                        'home_score': 0,
-                        'away_score': 0
-                    }
-                    db.save_match(match_data)
-                    
-                    # 3. Salvar Previsão
-                    best_bet = 'Over 9.5' if ml_prediction > 10 else 'Under 10.5'
-                    db.save_prediction(
-                        match_id=match_id_val,
-                        pred_type='ML_Scanner',
-                        value=ml_prediction,
-                        market=best_bet,
-                        prob=confidence,
-                        odds=1.85, # Placeholder
-                        category='Scanner',
-                        market_group='Corners',
-                        verbose=False
-                    )
-                    
-                    result = {
-                        'match_id': match_id_val,
-                        'match_name': match_name,
-                        'tournament': match['tournament'],
-                        'start_time': match['start_time'],
-                        'ml_prediction': round(ml_prediction, 1),
-                        'best_bet': best_bet,
-                        'confidence': round(confidence * 100, 1),
-                        'odds_value': 1.85
-                    }
-                    
+                # 2. Processa usando a lógica unificada
+                result = _process_match_prediction(details, predictor, df_history, db)
+                
+                if 'error' in result:
+                    emit_log(f"   ⚠️ {result['error']}", 'warning')
+                else:
                     # Filtra apenas oportunidades com alta confiança para a UI
-                    # Reduzido para 60% para mostrar mais resultados
                     if result['confidence'] >= 60:
+                        result['start_time'] = match['start_time'] # Mantém horário original
+                        result['tournament'] = match['tournament']
                         opportunities.append(result)
-                        emit_log(f'   ✅ Oportunidade: {best_bet} (@1.85)', 'success')
+                        emit_log(f"   ✅ Oportunidade: {result['best_bet']} (@1.85)", 'success')
                     else:
-                        emit_log(f'   ℹ️ Rejeitado: Confiança baixa ({result["confidence"]:.0f}%)', 'info')
+                        emit_log(f"   ℹ️ Rejeitado: Confiança baixa ({result['confidence']}%)", 'info')
                         
-                except Exception as e:
-                    print(f"Erro ao persistir dados do jogo {match_name}: {e}")
-                    
             except Exception as e:
                 print(f"Erro ao analisar {match_name}: {e}")
                 
@@ -1318,14 +1164,17 @@ def _update_pending_matches_task() -> None:
             # 2. Atualiza Match no DB
             db.save_match(details)
             
-            # 3. Se finalizou, busca estatísticas
+            # 3. Busca estatísticas para jogos finalizados OU em andamento (TEMPO REAL)
             if new_status == 'finished':
                 stats = scraper.get_match_stats(m_id)
                 db.save_stats(m_id, stats)
                 emit_log(f'   ✅ Finalizado! Placar: {details["home_score"]}-{details["away_score"]}', 'success')
                 updated_count += 1
             elif new_status == 'inprogress':
-                emit_log(f'   ⚽ Em andamento: {details["home_score"]}-{details["away_score"]}', 'highlight')
+                # CORREÇÃO: Busca stats de jogos AO VIVO para exibição em tempo real
+                stats = scraper.get_match_stats(m_id)
+                db.save_stats(m_id, stats)
+                emit_log(f'   ⚽ Ao Vivo: {details["home_score"]}-{details["away_score"]} | Stats atualizadas', 'highlight')
             else:
                 emit_log(f'   ⏳ Status: {new_status}', 'info')
                 
@@ -1403,14 +1252,74 @@ def run_server(host: str = '0.0.0.0', port: int = 5000, debug: bool = False) -> 
 ╚══════════════════════════════════════════════════════════════════╝
     """)
     
+    # Inicia o scheduler de atualização automática
+    _start_background_scheduler()
+    
     app.run(host=host, port=port, debug=debug, threaded=True)
+
+
+def _start_background_scheduler() -> None:
+    """
+    Inicia scheduler de background para atualização automática de dados.
+    
+    Regra de Negócio:
+        - Atualiza jogos pendentes (agendados e ao vivo) a cada 5 minutos
+        - Roda em thread daemon para não bloquear o servidor
+        - Só executa se não houver outra tarefa rodando (evita conflitos)
+    
+    Contexto:
+        Criado para resolver o problema de dados desatualizados.
+        Antes, o usuário precisava clicar manualmente em "Atualizar Jogo".
+        Agora o sistema mantém os dados frescos automaticamente.
+    """
+    def scheduler_loop():
+        """Loop infinito que executa atualização a cada 5 minutos."""
+        import time
+        
+        while True:
+            try:
+                # Aguarda 60 segundos (1 minuto) para atualização mais rápida
+                time.sleep(60)
+                
+                # Verifica se não há tarefa rodando
+                with state_lock:
+                    is_busy = system_state['is_running']
+                
+                if not is_busy:
+                    print("⏰ [Auto-Update] Verificando jogos pendentes...")
+                    
+                    # Executa atualização em thread separada para não bloquear
+                    def run_update():
+                        try:
+                            with state_lock:
+                                system_state['is_running'] = True
+                                system_state['current_task'] = 'Auto-Update'
+                            
+                            _update_pending_matches_task()
+                        finally:
+                            with state_lock:
+                                system_state['is_running'] = False
+                                system_state['current_task'] = None
+                    
+                    update_thread = threading.Thread(target=run_update, daemon=True)
+                    update_thread.start()
+                else:
+                    print("⏰ [Auto-Update] Sistema ocupado, pulando ciclo.")
+                    
+            except Exception as e:
+                print(f"❌ [Auto-Update] Erro no scheduler: {e}")
+    
+    # Inicia thread do scheduler
+    scheduler_thread = threading.Thread(target=scheduler_loop, daemon=True)
+    scheduler_thread.start()
+    print("✅ Scheduler de atualização automática iniciado (intervalo: 60 segundos)")
 
 
 if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(description='Servidor Web do Sistema de Previsão')
-    parser.add_argument('--host', default='0.0.0.0', help='Host do servidor')
+    parser.add_argument('--host', default='127.0.0.1', help='Host do servidor')
     parser.add_argument('--port', type=int, default=5000, help='Porta do servidor')
     parser.add_argument('--debug', action='store_true', help='Modo debug')
     

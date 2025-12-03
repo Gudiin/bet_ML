@@ -74,6 +74,12 @@ class SofaScoreScraper:
             for s in data['seasons']:
                 if s['year'] == year:
                     return s['id']
+                # Check for "24/25" format if year is "2025"
+                if year == "2025" and s['year'] == "24/25":
+                    return s['id']
+                if year == "2024" and s['year'] == "23/24":
+                    return s['id']
+            
             try:
                 year_int = int(year)
                 prev_year = year_int - 1

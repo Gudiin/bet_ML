@@ -580,9 +580,7 @@
                   <label class="form-label text-secondary">Data da Análise</label>
                   <div class="btn-group w-100" role="group">
                     <input type="radio" class="btn-check" name="scannerDate" id="dateToday" value="today" checked>
-                    <label class="btn btn-outline-secondary" for="dateToday">Hoje</label>
-                    <input type="radio" class="btn-check" name="scannerDate" id="dateTomorrow" value="tomorrow">
-                    <label class="btn btn-outline-secondary" for="dateTomorrow">Amanhã</label>
+                    <label class="btn btn-outline-secondary w-100" for="dateToday">Hoje</label>
                   </div>
                 </div>
                 <div class="col-md-4">
@@ -1216,7 +1214,10 @@
       }
 
       function analyzeMatch() {
-        if (isRunning) return;
+        if (isRunning) {
+          showToast("Aguarde", "Já existe uma tarefa em execução.", "warning");
+          return;
+        }
 
         const url = document.getElementById("matchUrl").value.trim();
         if (!url) {
@@ -1224,6 +1225,7 @@
           return;
         }
 
+        console.log("🔍 Iniciando análise de:", url);
         setStatus(true, "Analisando...");
 
         $.ajax({
@@ -1233,6 +1235,7 @@
           data: JSON.stringify({ url: url }),
         })
           .done(function (response) {
+            console.log("✅ Resposta da API:", response);
             currentMatchId = response.match_id;
             showToast(
               "Análise iniciada",
@@ -1242,6 +1245,7 @@
             pollStatus();
           })
           .fail(function (xhr) {
+            console.error("❌ Erro na requisição:", xhr);
             const error = xhr.responseJSON?.error || "Erro desconhecido";
             showToast("Erro", error, "error");
             setStatus(false);
@@ -1303,18 +1307,19 @@
       }
 
       function loadMatchResult(matchId) {
+        console.log("📊 Carregando resultado do jogo:", matchId);
+        
         $.get(`/api/match/result/${matchId}`)
           .done(function (data) {
+            console.log("✅ Dados recebidos:", data);
             renderResults(data);
             // Switch to results tab
             document.querySelector('[data-bs-target="#tabResults"]').click();
           })
-          .fail(function () {
-            showToast(
-              "Erro",
-              "Não foi possível carregar os resultados.",
-              "error"
-            );
+          .fail(function (xhr) {
+            console.error("❌ Erro ao carregar resultado:", xhr);
+            const error = xhr.responseJSON?.error || "Não foi possível carregar os resultados.";
+            showToast("Erro", error, "error");
           });
       }
 
@@ -1991,6 +1996,15 @@
       // Start Vigilante on load
       $(document).ready(function() {
           startLiveUpdateLoop();
+          
+          // Auto-refresh da tabela de histórico a cada 30 segundos
+          setInterval(function() {
+              // Só atualiza se não houver tarefa rodando
+              if (!isRunning) {
+                  console.log("🔄 Auto-refresh: Atualizando tabela de histórico...");
+                  loadHistory();
+              }
+          }, 30000); // 30 segundos
       });
     </script>
   </body>

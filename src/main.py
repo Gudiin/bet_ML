@@ -326,16 +326,13 @@ def analyze_match_url() -> None:
                 db = DBManager()
                 db.save_prediction(match_id, 'ML', ml_prediction, f"Over {int(ml_prediction)}", 0.0, verbose=True)
                 db.close()
+            else:
+                print(f"{Colors.RED}⚠️ Modelo ML não foi carregado. Continuando apenas com análise estatística.{Colors.RESET}")
         except Exception as e:
-            print(f"Erro ao usar modelo V2: {e}")
-            pass
+            print(f"{Colors.RED}❌ Erro ao usar modelo V2: {e}{Colors.RESET}")
+            print(f"{Colors.YELLOW}⚠️ Continuando apenas com análise estatística (Monte Carlo).{Colors.RESET}")
 
-        if ml_prediction == 0:
-            predictor = CornerPredictor()
-            if predictor.load_model():
-                # Falta implementar fallback corretamente ou manter como estava
-                pass
-            
+        # Statistical analysis continues regardless of ML prediction
         analyzer = StatisticalAnalyzer()
         
         def prepare_team_df(games, team_id):
@@ -372,7 +369,16 @@ def analyze_match_url() -> None:
         scraper.stop()
 
 def retrieve_analysis() -> None:
-    match_id = input("Digite o ID do jogo: ")
+    user_input = input("Digite o ID do jogo ou cole a URL: ")
+    
+    # Extract match ID from URL if provided
+    match_id_search = re.search(r'id:(\d+)', user_input)
+    if match_id_search:
+        match_id = match_id_search.group(1)
+    else:
+        # Assume it's a raw ID
+        match_id = user_input.strip()
+    
     db = DBManager()
     conn = db.connect()
     

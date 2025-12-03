@@ -341,15 +341,14 @@ class ImprovedCornerPredictor:
         return None
 
 
+from src.ml.feature_extraction import calculate_rolling_features, get_feature_names
+
 def prepare_improved_features(df: pd.DataFrame) -> tuple:
     """
     Prepara features otimizadas para o modelo melhorado.
     
-    Inclui:
-    - Médias rolling (5 e 3 jogos)
-    - Tendência (forma recente)
-    - Total esperado
-    - Diferenças entre times
+    Wrapper para o módulo centralizado de feature extraction.
+    Mantido para retrocompatibilidade.
     
     Args:
         df: DataFrame com dados históricos.
@@ -357,74 +356,5 @@ def prepare_improved_features(df: pd.DataFrame) -> tuple:
     Returns:
         tuple: (X, y, feature_names)
     """
-    df = df.sort_values('start_timestamp').copy()
-    
-    # Reestrutura dados
-    matches_home = df[['match_id', 'start_timestamp', 'home_team_id', 
-                       'corners_home_ft', 'shots_ot_home_ft', 'home_score',
-                       'corners_home_ht']].copy()
-    matches_home.columns = ['match_id', 'timestamp', 'team_id', 
-                            'corners', 'shots', 'goals', 'corners_ht']
-    matches_home['is_home'] = 1
-    
-    matches_away = df[['match_id', 'start_timestamp', 'away_team_id', 
-                       'corners_away_ft', 'shots_ot_away_ft', 'away_score',
-                       'corners_away_ht']].copy()
-    matches_away.columns = ['match_id', 'timestamp', 'team_id', 
-                            'corners', 'shots', 'goals', 'corners_ht']
-    matches_away['is_home'] = 0
-    
-    team_stats = pd.concat([matches_home, matches_away]).sort_values(['team_id', 'timestamp'])
-    
-    # Rolling stats
-    for col in ['corners', 'shots', 'goals']:
-        team_stats[f'avg_{col}_5'] = team_stats.groupby('team_id')[col].transform(
-            lambda x: x.shift(1).rolling(window=5, min_periods=1).mean()
-        )
-        team_stats[f'avg_{col}_3'] = team_stats.groupby('team_id')[col].transform(
-            lambda x: x.shift(1).rolling(window=3, min_periods=1).mean()
-        )
-    
-    team_stats['avg_corners_ht'] = team_stats.groupby('team_id')['corners_ht'].transform(
-        lambda x: x.shift(1).rolling(window=5, min_periods=1).mean()
-    )
-    
-    # Merge back
-    df_features = df.copy()
-    
-    home_stats = team_stats[team_stats['is_home'] == 1][
-        ['match_id', 'avg_corners_5', 'avg_shots_5', 'avg_goals_5', 
-         'avg_corners_3', 'avg_corners_ht']
-    ]
-    home_stats.columns = ['match_id', 'home_avg_corners', 'home_avg_shots', 
-                          'home_avg_goals', 'home_avg_corners_3', 'home_avg_corners_ht']
-    df_features = df_features.merge(home_stats, on='match_id', how='left')
-    
-    away_stats = team_stats[team_stats['is_home'] == 0][
-        ['match_id', 'avg_corners_5', 'avg_shots_5', 'avg_goals_5',
-         'avg_corners_3', 'avg_corners_ht']
-    ]
-    away_stats.columns = ['match_id', 'away_avg_corners', 'away_avg_shots',
-                          'away_avg_goals', 'away_avg_corners_3', 'away_avg_corners_ht']
-    df_features = df_features.merge(away_stats, on='match_id', how='left')
-    
-    # Features derivadas
-    df_features['total_corners_expected'] = df_features['home_avg_corners'] + df_features['away_avg_corners']
-    df_features['corner_diff'] = df_features['home_avg_corners'] - df_features['away_avg_corners']
-    df_features['home_trend'] = df_features['home_avg_corners_3'] - df_features['home_avg_corners']
-    df_features['away_trend'] = df_features['away_avg_corners_3'] - df_features['away_avg_corners']
-    
-    df_features = df_features.dropna()
-    
-    features = [
-        'home_avg_corners', 'home_avg_shots', 'home_avg_goals',
-        'away_avg_corners', 'away_avg_shots', 'away_avg_goals',
-        'home_avg_corners_ht', 'away_avg_corners_ht',
-        'total_corners_expected', 'corner_diff',
-        'home_trend', 'away_trend'
-    ]
-    
-    X = df_features[features]
-    y = df_features['corners_home_ft'] + df_features['corners_away_ft']
-    
-    return X, y, features
+    return calculate_rolling_features(df)
+

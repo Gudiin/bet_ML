@@ -184,21 +184,6 @@ class DBManager:
         conn = self.connect()
         cursor = conn.cursor()
         try:
-            # Verifica se já existe uma previsão com o mesmo match_id, market e market_group
-            cursor.execute('''
-                SELECT id FROM predictions 
-                WHERE match_id = ? AND market = ? AND market_group = ?
-            ''', (match_id, market, market_group))
-            
-            existing = cursor.fetchone()
-            
-            if existing:
-                # Já existe uma previsão para este mercado, não salva duplicata
-                if verbose:
-                    print(f"Previsão duplicada ignorada para o jogo {match_id} ({market} - {market_group})")
-                return
-            
-            # Não existe duplicata, salva normalmente
             cursor.execute('''
                 INSERT INTO predictions (match_id, prediction_type, predicted_value, market, probability, odds, category, market_group)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
