@@ -7,15 +7,38 @@ import os
 import pandas as pd
 import re
 import json
+import traceback
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.database.db_manager import DBManager
 from src.scrapers.sofascore import SofaScoreScraper
+from src.analysis.statistical import StatisticalAnalyzer, Colors
+
+# Imports de ML (Legado e Novo)
 from src.ml.feature_engineering import prepare_training_data
 from src.ml.model import CornerPredictor
-from src.ml.model_improved import ImprovedCornerPredictor, prepare_improved_features
-from src.analysis.statistical import StatisticalAnalyzer, Colors
+from src.ml.features_v2 import create_advanced_features, prepare_features_for_prediction
+from src.ml.model_v2 import ProfessionalPredictor
+
+
+def _fix_column_names(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Helper para corrigir nomes de colunas do banco para o formato esperado pelo ML.
+    O banco usa 'home_score', mas o feature engineering espera 'goals_ft_home'.
+    """
+    if df.empty:
+        return df
+        
+    df = df.copy()
+    
+    # Mapeamento de Gols (O erro estava aqui!)
+    if 'home_score' in df.columns and 'goals_ft_home' not in df.columns:
+        df['goals_ft_home'] = df['home_score']
+    if 'away_score' in df.columns and 'goals_ft_away' not in df.columns:
+        df['goals_ft_away'] = df['away_score']
+        
+    return df
 
 
 def load_leagues_config() -> list:
@@ -56,14 +79,14 @@ def update_database(league_name: str = "Brasileirão Série A", season_year: str
             
         print(f"ID Torneio: {t_id}, ID Temporada: {s_id}")
         
-        # --- VERIFICAÇÃO DE INTEGRIDADE (NOVO) ---
+        # --- VERIFICAÇÃO DE INTEGRIDADE ---
         stats = db.get_season_stats(s_id)
         total_matches_db = stats['total_matches']
         last_round_db = stats['last_round']
         
         print(f"Status Atual no DB: {total_matches_db} jogos, Última Rodada: {last_round_db}")
         
-        # Lógica: Se já tem +370 jogos e não é 2025/25/26, considera completo
+        # Lógica: Se já tem +370 jogos e não é temporada atual, considera completo
         is_current_season = "2025" in season_year or "25/26" in season_year
         if total_matches_db > 370 and not is_current_season:
             print(f"✅ Temporada {season_year} já está completa no banco ({total_matches_db} jogos). Pulando...")
@@ -72,12 +95,10 @@ def update_database(league_name: str = "Brasileirão Série A", season_year: str
         # Define rodada inicial (Incremental)
         start_round = 1
         if last_round_db > 0:
-            # Começa da última rodada para garantir atualizações de jogos adiados/pendentes
             start_round = last_round_db
             print(f"⏩ Retomando atualização a partir da rodada {start_round}...")
-        # ----------------------------------------
         
-        # 2. Get Matches (passando start_round)
+        # 2. Get Matches
         matches = scraper.get_matches(t_id, s_id, start_round=start_round)
         print(f"Encontrados {len(matches)} jogos novos/atualizados.")
         
@@ -203,17 +224,33 @@ def train_model() -> None:
         return
         
     print(f"Carregados {len(df)} registros para treino.")
+    
+    # --- CORREÇÃO DE NOMES DE COLUNAS ---
+    df = _fix_column_names(df)
+    # ------------------------------------
+    
     print("\n=== OPÇÕES DE TREINAMENTO ===")
-    print("1. Treinamento Rápido (Padrão)")
-    print("2. Treinamento Otimizado (Cross-Validation + Tuning)")
+    print("1. Treinamento Rápido (Random Forest - Legado)")
+    print("2. Treinamento Otimizado (Profissional V2 - Recomendado)")
     
     choice = input("Escolha uma opção (1 ou 2): ")
     
     if choice == '2':
-        print("\nPreparando features avançadas...")
-        X, y, _ = prepare_improved_features(df)
-        predictor = ImprovedCornerPredictor(use_ensemble=False)
-        predictor.train_with_optimization(X, y)
+        print("\n🚀 Iniciando Treinamento Profissional V2...")
+        # 1. Prepara features vetorizadas (Rápido e Seguro)
+        print("🔧 Gerando features avançadas...")
+        
+        # Agora o df já tem as colunas 'goals_ft_home'/'goals_ft_away' corretas
+        try:
+            X, y, timestamps = create_advanced_features(df, window_short=3, window_long=5)
+            
+            # 2. Treina com validação temporal
+            predictor = ProfessionalPredictor()
+            predictor.train_time_series_split(X, y, timestamps)
+        except Exception as e:
+            print(f"Erro fatal no treinamento: {e}")
+            traceback.print_exc()
+            
     else:
         print("\nTreinando modelo padrão...")
         X, y, _ = prepare_training_data(df)
@@ -275,6 +312,10 @@ def analyze_match_url() -> None:
             print("Banco de dados vazio.")
             return
 
+        # --- CORREÇÃO DE NOMES DE COLUNAS TAMBÉM NA ANÁLISE ---
+        df = _fix_column_names(df)
+        # ------------------------------------------------------
+
         home_games = df[(df['home_team_id'] == home_id) | (df['away_team_id'] == home_id)].tail(5)
         away_games = df[(df['home_team_id'] == away_id) | (df['away_team_id'] == away_id)].tail(5)
         
@@ -286,53 +327,49 @@ def analyze_match_url() -> None:
         db.close()
         
         ml_prediction = 0
+        
+        # 1. Preparar Features usando a V2
         try:
-            predictor_v2 = ImprovedCornerPredictor()
-            if predictor_v2.load_model():
-                def get_team_stats(games, team_id):
-                    stats = {'corners': [], 'shots': [], 'goals': [], 'corners_ht': []}
-                    for _, row in games.iterrows():
-                        if row['home_team_id'] == team_id:
-                            stats['corners'].append(row['corners_home_ft'])
-                            stats['shots'].append(row['shots_ot_home_ft'])
-                            stats['goals'].append(row['home_score'])
-                            stats['corners_ht'].append(row['corners_home_ht'])
-                        else:
-                            stats['corners'].append(row['corners_away_ft'])
-                            stats['shots'].append(row['shots_ot_away_ft'])
-                            stats['goals'].append(row['away_score'])
-                            stats['corners_ht'].append(row['corners_away_ht'])
-                    def avg(lst): return sum(lst) / len(lst) if lst else 0
-                    return {k: avg(v) for k, v in stats.items()}, {k: avg(v[-3:]) for k, v in stats.items()}
-
-                h_stats_5, h_stats_3 = get_team_stats(home_games, home_id)
-                a_stats_5, a_stats_3 = get_team_stats(away_games, away_id)
+            print(f"Gerando features avançadas para {match_name}...")
+            
+            features_df = prepare_features_for_prediction(
+                df_history=df,
+                home_team_id=home_id,
+                away_team_id=away_id,
+                window_short=3,
+                window_long=5
+            )
+            
+            # 2. Carregar e Usar o Modelo Profissional
+            predictor = ProfessionalPredictor()
+            
+            if predictor.load_model():
+                # Faz a previsão
+                pred_array = predictor.predict(features_df)
+                ml_prediction = float(pred_array[0])
                 
-                features = [
-                    h_stats_5['corners'], h_stats_5['shots'], h_stats_5['goals'],
-                    a_stats_5['corners'], a_stats_5['shots'], a_stats_5['goals'],
-                    h_stats_5['corners_ht'], a_stats_5['corners_ht'],
-                    h_stats_5['corners'] + a_stats_5['corners'],
-                    h_stats_5['corners'] - a_stats_5['corners'],
-                    h_stats_3['corners'] - h_stats_5['corners'],
-                    a_stats_3['corners'] - a_stats_5['corners']
-                ]
+                print(f"\n🤖 Previsão da IA (Professional V2): {ml_prediction:.2f} Escanteios")
                 
-                X_new = [features]
-                pred = predictor_v2.predict(X_new)
-                ml_prediction = pred[0]
-                print(f"\n🤖 Previsão da IA (LightGBM): {ml_prediction:.2f} Escanteios")
-                
+                # Salva no banco
                 db = DBManager()
-                db.save_prediction(match_id, 'ML', ml_prediction, f"Over {int(ml_prediction)}", 0.0, verbose=True)
+                db.save_prediction(
+                    match_id, 
+                    'ML_V2', 
+                    ml_prediction, 
+                    f"Over {int(ml_prediction)}", 
+                    0.0, 
+                    category="Professional",
+                    verbose=True
+                )
                 db.close()
             else:
-                print(f"{Colors.RED}⚠️ Modelo ML não foi carregado. Continuando apenas com análise estatística.{Colors.RESET}")
+                print(f"{Colors.RED}⚠️ Modelo Profissional não encontrado. Treine-o primeiro (Opção 2).{Colors.RESET}")
+                
         except Exception as e:
-            print(f"{Colors.RED}❌ Erro ao usar modelo V2: {e}{Colors.RESET}")
-            print(f"{Colors.YELLOW}⚠️ Continuando apenas com análise estatística (Monte Carlo).{Colors.RESET}")
+            print(f"{Colors.RED}❌ Erro na Predição ML: {e}{Colors.RESET}")
+            traceback.print_exc()
 
-        # Statistical analysis continues regardless of ML prediction
+        # Statistical analysis continues
         analyzer = StatisticalAnalyzer()
         
         def prepare_team_df(games, team_id):
@@ -371,12 +408,10 @@ def analyze_match_url() -> None:
 def retrieve_analysis() -> None:
     user_input = input("Digite o ID do jogo ou cole a URL: ")
     
-    # Extract match ID from URL if provided
     match_id_search = re.search(r'id:(\d+)', user_input)
     if match_id_search:
         match_id = match_id_search.group(1)
     else:
-        # Assume it's a raw ID
         match_id = user_input.strip()
     
     db = DBManager()
@@ -389,11 +424,11 @@ def retrieve_analysis() -> None:
     if not match_info.empty:
         match_name = f"{match_info.iloc[0]['home_team_name']} vs {match_info.iloc[0]['away_team_name']}"
     
-    query_ml = "SELECT predicted_value FROM predictions WHERE match_id = ? AND prediction_type = 'ML'"
+    query_ml = "SELECT predicted_value FROM predictions WHERE match_id = ? AND prediction_type = 'ML_V2'"
     ml_pred = pd.read_sql_query(query_ml, conn, params=(match_id,))
     
     if not ml_pred.empty:
-        print(f"\n🤖 Previsão da IA (Random Forest): {ml_pred.iloc[0]['predicted_value']:.2f} Escanteios")
+        print(f"\n🤖 Previsão da IA (Professional V2): {ml_pred.iloc[0]['predicted_value']:.2f} Escanteios")
 
     query_top7 = "SELECT market_group, market, probability, odds, status FROM predictions WHERE match_id = ? AND category = 'Top7' ORDER BY probability DESC"
     top7 = pd.read_sql_query(query_top7, conn, params=(match_id,))
