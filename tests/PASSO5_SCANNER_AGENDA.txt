@@ -1,0 +1,484 @@
+═══════════════════════════════════════════════════════════════════════════════
+                🤖 NÍVEL 3 - PASSO 5: SCRAPER POR DATA (AGENDA DO DIA)
+                        "Scanner de Oportunidades Automático"
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 OBJETIVO:
+   Criar um sistema que busca automaticamente TODOS os jogos de uma data específica
+   (ex: hoje, amanhã) e analisa cada um, gerando um relatório de oportunidades.
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 O QUE SERÁ IMPLEMENTADO
+═══════════════════════════════════════════════════════════════════════════════
+
+1️⃣ **Novo Método no Scraper**
+   └─ `get_scheduled_matches(date)` → Retorna lista de jogos de uma data
+
+2️⃣ **Nova Opção no Menu CLI**
+   └─ "7. Scanner de Oportunidades (Agenda do Dia)"
+
+3️⃣ **Análise Automática em Lote**
+   └─ Analisa todos os jogos encontrados automaticamente
+
+4️⃣ **Relatório de Oportunidades**
+   └─ Gera relatório com as melhores apostas do dia
+
+═══════════════════════════════════════════════════════════════════════════════
+🔧 IMPLEMENTAÇÃO TÉCNICA
+═══════════════════════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTE 1: Novo Método no Scraper (sofascore.py)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+```python
+def get_scheduled_matches(self, date_str: str = None, leagues: list = None) -> list:
+    """
+    Busca jogos agendados para uma data específica.
+    
+    Args:
+        date_str: Data no formato 'YYYY-MM-DD' (ex: '2025-12-02')
+                  Se None, usa a data de hoje
+        leagues: Lista de IDs de ligas para filtrar (opcional)
+                 Ex: [325] para Brasileirão Série A
+    
+    Returns:
+        list: Lista de dicionários com informações dos jogos:
+            {
+                'match_id': '13472604',
+                'home_team': 'Grêmio',
+                'away_team': 'Fluminense',
+                'tournament': 'Brasileirão Série A',
+                'start_time': '2025-12-02T20:00:00',
+                'status': 'notstarted'
+            }
+    
+    Lógica:
+        1. Converte date_str para timestamp Unix
+        2. Faz request para API de eventos por data
+        3. Filtra por ligas (se especificado)
+        4. Retorna lista de jogos
+    
+    API Endpoint:
+        https://www.sofascore.com/api/v1/sport/football/scheduled-events/{date}
+        Onde {date} é no formato 'YYYY-MM-DD'
+    """
+    from datetime import datetime, timedelta
+    
+    # Se não especificou data, usa hoje
+    if date_str is None:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+    
+    print(f"🔍 Buscando jogos agendados para: {date_str}")
+    
+    # Endpoint da API do SofaScore para jogos por data
+    api_url = f"https://www.sofascore.com/api/v1/sport/football/scheduled-events/{date_str}"
+    
+    try:
+        data = self._fetch_api(api_url)
+        
+        if not data or 'events' not in data:
+            print("❌ Nenhum jogo encontrado para esta data.")
+            return []
+        
+        matches = []
+        for event in data['events']:
+            # Filtra por ligas se especificado
+            if leagues and event.get('tournament', {}).get('uniqueTournament', {}).get('id') not in leagues:
+                continue
+            
+            match_info = {
+                'match_id': str(event['id']),
+                'home_team': event['homeTeam']['name'],
+                'away_team': event['awayTeam']['name'],
+                'tournament': event.get('tournament', {}).get('name', 'Unknown'),
+                'start_time': datetime.fromtimestamp(event['startTimestamp']).strftime('%Y-%m-%d %H:%M'),
+                'status': event.get('status', {}).get('type', 'unknown')
+            }
+            matches.append(match_info)
+        
+        print(f"✅ Encontrados {len(matches)} jogos para {date_str}")
+        return matches
+        
+    except Exception as e:
+        print(f"❌ Erro ao buscar jogos: {e}")
+        return []
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTE 2: Nova Função no main.py - Scanner de Oportunidades
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+```python
+def scan_daily_opportunities() -> None:
+    """
+    Scanner de Oportunidades - Analisa todos os jogos do dia.
+    
+    Fluxo:
+        1. Pergunta qual data (hoje, amanhã, ou específica)
+        2. Busca todos os jogos da data
+        3. Analisa cada jogo automaticamente
+        4. Gera relatório com as melhores oportunidades
+        5. Salva relatório em arquivo
+    """
+    from datetime import datetime, timedelta
+    
+    print("\n" + "═" * 60)
+    print("🔍 SCANNER DE OPORTUNIDADES - AGENDA DO DIA")
+    print("═" * 60)
+    
+    # Menu de data
+    print("\nEscolha a data:")
+    print("1. Hoje")
+    print("2. Amanhã")
+    print("3. Data específica")
+    
+    choice = input("\nOpção: ")
+    
+    if choice == '1':
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        date_label = "HOJE"
+    elif choice == '2':
+        date_str = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+        date_label = "AMANHÃ"
+    elif choice == '3':
+        date_str = input("Digite a data (YYYY-MM-DD): ")
+        date_label = date_str
+    else:
+        print("Opção inválida.")
+        return
+    
+    # Filtro de ligas (opcional)
+    print("\nFiltrar por ligas específicas?")
+    print("1. Sim (escolher ligas)")
+    print("2. Não (todas as ligas)")
+    
+    filter_choice = input("\nOpção: ")
+    leagues_filter = None
+    
+    if filter_choice == '1':
+        print("\nLigas disponíveis:")
+        print("1. Brasileirão Série A (325)")
+        print("2. Premier League (17)")
+        print("3. La Liga (8)")
+        print("4. Todas as principais")
+        
+        league_choice = input("\nEscolha: ")
+        if league_choice == '1':
+            leagues_filter = [325]  # Brasileirão
+        elif league_choice == '2':
+            leagues_filter = [17]   # Premier League
+        elif league_choice == '3':
+            leagues_filter = [8]    # La Liga
+        elif league_choice == '4':
+            leagues_filter = [325, 17, 8, 31, 35, 34, 23]  # Top 7 ligas
+    
+    # Inicializa scraper e DB
+    scraper = SofaScoreScraper(headless=True)
+    db = DBManager()
+    
+    try:
+        scraper.start()
+        
+        # Busca jogos da data
+        matches = scraper.get_scheduled_matches(date_str, leagues_filter)
+        
+        if not matches:
+            print("\n❌ Nenhum jogo encontrado para os critérios especificados.")
+            return
+        
+        print(f"\n📊 Encontrados {len(matches)} jogos para {date_label}")
+        print("\n" + "─" * 60)
+        
+        # Lista os jogos
+        for idx, match in enumerate(matches, 1):
+            print(f"{idx}. {match['home_team']} vs {match['away_team']}")
+            print(f"   🏆 {match['tournament']} | ⏰ {match['start_time']}")
+        
+        print("─" * 60)
+        
+        # Confirmação
+        confirm = input(f"\nAnalisar todos os {len(matches)} jogos? (s/n): ").lower()
+        
+        if confirm != 's':
+            print("Operação cancelada.")
+            return
+        
+        # Análise em lote
+        opportunities = []
+        
+        print(f"\n{'═' * 60}")
+        print(f"🤖 INICIANDO ANÁLISE AUTOMÁTICA DE {len(matches)} JOGOS")
+        print(f"{'═' * 60}\n")
+        
+        for idx, match in enumerate(matches, 1):
+            print(f"\n[{idx}/{len(matches)}] Analisando: {match['home_team']} vs {match['away_team']}")
+            
+            try:
+                # Aqui você chamaria a função de análise completa
+                # Por enquanto, vou simular
+                match_id = match['match_id']
+                
+                # TODO: Chamar analyze_match() aqui
+                # result = analyze_match(match_id, db, scraper)
+                
+                # Simulação de resultado
+                result = {
+                    'match_id': match_id,
+                    'match_name': f"{match['home_team']} vs {match['away_team']}",
+                    'ml_prediction': 10.5,  # Simulado
+                    'best_bet': 'Over 9.5',
+                    'confidence': 0.75,
+                    'odds_value': 1.85
+                }
+                
+                # Adiciona à lista de oportunidades
+                if result['confidence'] >= 0.70:  # Filtro de confiança
+                    opportunities.append(result)
+                    print(f"   ✅ Oportunidade encontrada! (Confiança: {result['confidence']:.0%})")
+                else:
+                    print(f"   ⚠️ Baixa confiança ({result['confidence']:.0%})")
+                
+            except Exception as e:
+                print(f"   ❌ Erro ao analisar: {e}")
+        
+        # Gera relatório
+        print(f"\n{'═' * 60}")
+        print(f"📋 RELATÓRIO DE OPORTUNIDADES - {date_label}")
+        print(f"{'═' * 60}\n")
+        
+        if not opportunities:
+            print("❌ Nenhuma oportunidade de alta confiança encontrada.")
+        else:
+            print(f"✅ {len(opportunities)} oportunidades encontradas:\n")
+            
+            # Ordena por confiança
+            opportunities.sort(key=lambda x: x['confidence'], reverse=True)
+            
+            for idx, opp in enumerate(opportunities, 1):
+                print(f"{idx}. {opp['match_name']}")
+                print(f"   📊 Previsão ML: {opp['ml_prediction']:.1f} escanteios")
+                print(f"   💰 Melhor Aposta: {opp['best_bet']} @ {opp['odds_value']}")
+                print(f"   🎯 Confiança: {opp['confidence']:.0%}")
+                print()
+            
+            # Salva relatório
+            report_filename = f"oportunidades_{date_str}.txt"
+            with open(report_filename, 'w', encoding='utf-8') as f:
+                f.write(f"RELATÓRIO DE OPORTUNIDADES - {date_label}\n")
+                f.write(f"{'=' * 60}\n\n")
+                
+                for idx, opp in enumerate(opportunities, 1):
+                    f.write(f"{idx}. {opp['match_name']}\n")
+                    f.write(f"   Previsão ML: {opp['ml_prediction']:.1f} escanteios\n")
+                    f.write(f"   Melhor Aposta: {opp['best_bet']} @ {opp['odds_value']}\n")
+                    f.write(f"   Confiança: {opp['confidence']:.0%}\n\n")
+            
+            print(f"💾 Relatório salvo em: {report_filename}")
+        
+    finally:
+        scraper.stop()
+        db.close()
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PARTE 3: Atualizar Menu Principal (main.py)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+```python
+def main():
+    """Função principal do CLI."""
+    while True:
+        print("\n" + "═" * 50)
+        print(f"{Colors.BOLD}🤖 SISTEMA DE PREVISÃO DE ESCANTEIOS (ML){Colors.RESET}")
+        print("═" * 50)
+        print("1. Atualizar Banco de Dados (Liga Completa)")
+        print("2. Treinar Modelo de IA")
+        print("3. Analisar Jogo (URL)")
+        print("4. Consultar Análise (ID)")
+        print("5. Atualizar Liga Específica")
+        print("6. Atualizar Jogo Específico (URL)")
+        print("7. 🔍 Scanner de Oportunidades (Agenda do Dia) [NOVO]")  # ← NOVA OPÇÃO
+        print("0. Sair")
+        
+        choice = input("\nEscolha uma opção: ")
+        
+        if choice == '1':
+            update_database()
+        elif choice == '2':
+            train_model()
+        elif choice == '3':
+            analyze_match_url()
+        elif choice == '4':
+            retrieve_analysis()
+        elif choice == '5':
+            update_specific_league()
+        elif choice == '6':
+            update_match_by_url()
+        elif choice == '7':
+            scan_daily_opportunities()  # ← NOVA FUNÇÃO
+        elif choice == '0':
+            print("Saindo...")
+            break
+        else:
+            print("Opção inválida.")
+```
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 COMO ISSO AJUDA?
+═══════════════════════════════════════════════════════════════════════════════
+
+1️⃣ **AUTOMAÇÃO TOTAL**
+   ├─ Antes: Analisar 1 jogo por vez manualmente
+   └─ Depois: Analisar 50+ jogos automaticamente
+
+2️⃣ **ECONOMIA DE TEMPO**
+   ├─ Antes: 5 min por jogo × 20 jogos = 100 minutos
+   └─ Depois: 5 minutos para todos (automático)
+
+3️⃣ **ENCONTRA OPORTUNIDADES ESCONDIDAS**
+   ├─ Analisa jogos que você não conhece
+   └─ Descobre value bets em ligas menores
+
+4️⃣ **RELATÓRIO ORGANIZADO**
+   ├─ Lista ordenada por confiança
+   └─ Salva em arquivo para consulta
+
+5️⃣ **FILTROS INTELIGENTES**
+   ├─ Por data (hoje, amanhã, específica)
+   ├─ Por liga (Brasileirão, Premier, etc.)
+   └─ Por confiança (>70%, >80%, etc.)
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 EXEMPLO DE USO
+═══════════════════════════════════════════════════════════════════════════════
+
+**Cenário: Você quer encontrar oportunidades para amanhã**
+
+```
+Escolha uma opção: 7
+
+🔍 SCANNER DE OPORTUNIDADES - AGENDA DO DIA
+═══════════════════════════════════════════════════════════════════════════════
+
+Escolha a data:
+1. Hoje
+2. Amanhã
+3. Data específica
+
+Opção: 2
+
+Filtrar por ligas específicas?
+1. Sim (escolher ligas)
+2. Não (todas as ligas)
+
+Opção: 1
+
+Ligas disponíveis:
+1. Brasileirão Série A (325)
+2. Premier League (17)
+3. La Liga (8)
+4. Todas as principais
+
+Escolha: 4
+
+🔍 Buscando jogos agendados para: 2025-12-02
+✅ Encontrados 23 jogos para AMANHÃ
+
+────────────────────────────────────────────────────────────────
+1. Grêmio vs Fluminense
+   🏆 Brasileirão Série A | ⏰ 2025-12-02 20:00
+2. Arsenal vs Manchester United
+   🏆 Premier League | ⏰ 2025-12-02 17:30
+3. Real Madrid vs Barcelona
+   🏆 La Liga | ⏰ 2025-12-02 16:00
+... (20 jogos mais)
+────────────────────────────────────────────────────────────────
+
+Analisar todos os 23 jogos? (s/n): s
+
+═══════════════════════════════════════════════════════════════════════════════
+🤖 INICIANDO ANÁLISE AUTOMÁTICA DE 23 JOGOS
+═══════════════════════════════════════════════════════════════════════════════
+
+[1/23] Analisando: Grêmio vs Fluminense
+   ✅ Oportunidade encontrada! (Confiança: 78%)
+
+[2/23] Analisando: Arsenal vs Manchester United
+   ✅ Oportunidade encontrada! (Confiança: 82%)
+
+[3/23] Analisando: Real Madrid vs Barcelona
+   ⚠️ Baixa confiança (65%)
+
+... (continua)
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 RELATÓRIO DE OPORTUNIDADES - AMANHÃ
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ 8 oportunidades encontradas:
+
+1. Arsenal vs Manchester United
+   📊 Previsão ML: 11.2 escanteios
+   💰 Melhor Aposta: Over 10.5 @ 1.95
+   🎯 Confiança: 82%
+
+2. Grêmio vs Fluminense
+   📊 Previsão ML: 10.8 escanteios
+   💰 Melhor Aposta: Over 9.5 @ 1.75
+   🎯 Confiança: 78%
+
+... (6 oportunidades mais)
+
+💾 Relatório salvo em: oportunidades_2025-12-02.txt
+```
+
+═══════════════════════════════════════════════════════════════════════════════
+⚙️ MELHORIAS FUTURAS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. **Integração com Telegram**
+   └─ Enviar relatório automaticamente via bot
+
+2. **Agendamento Automático**
+   └─ Rodar todo dia às 10h da manhã
+
+3. **Filtros Avançados**
+   ├─ Por odds mínimas (ex: > 1.80)
+   ├─ Por horário (ex: jogos à noite)
+   └─ Por histórico H2H
+
+4. **Comparação com Odds Reais**
+   └─ Scrape de odds da Bet365
+   └─ Calcula value bet automaticamente
+
+5. **Machine Learning para Seleção**
+   └─ Modelo que aprende quais oportunidades dão certo
+   └─ Ajusta filtro de confiança automaticamente
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ RESUMO
+═══════════════════════════════════════════════════════════════════════════════
+
+**O que é:**
+   Scanner automático que analisa todos os jogos de uma data e gera relatório
+   de oportunidades ordenado por confiança.
+
+**Como funciona:**
+   1. Busca jogos da data via API do SofaScore
+   2. Analisa cada jogo automaticamente
+   3. Filtra por confiança (>70%)
+   4. Gera relatório ordenado
+   5. Salva em arquivo
+
+**Benefícios:**
+   ✅ Automação total (economiza horas)
+   ✅ Encontra oportunidades escondidas
+   ✅ Relatório organizado e pronto para uso
+   ✅ Filtros por liga e data
+
+**Próximo Passo:**
+   Implementar o método `get_scheduled_matches()` no scraper e a função
+   `scan_daily_opportunities()` no main.py
+
+═══════════════════════════════════════════════════════════════════════════════

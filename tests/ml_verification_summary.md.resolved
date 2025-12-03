@@ -1,0 +1,97 @@
+# Resumo da Verificação e Melhorias ML
+
+## ✅ Tarefas Concluídas
+
+### 1. Verificação da Implementação LightGBM
+**Arquivo**: [src/ml/model_improved.py](file:///c:/Users/mathe/Downloads/projeto_bet-main3/src/ml/model_improved.py)
+
+**Funcionalidades Confirmadas**:
+- ✅ **LightGBM como modelo principal**: Implementado com parâmetros otimizados (n_estimators=50, learning_rate=0.01, max_depth=3).
+- ✅ **Fallback para Random Forest**: Se LightGBM não estiver instalado, usa RF automaticamente.
+- ✅ **Suporte a Ensemble**: Pode combinar LightGBM + XGBoost + Random Forest com pesos (40% + 35% + 25%).
+- ✅ **Método [train_with_optimization](file:///c:/Users/mathe/Downloads/projeto_bet-main3/src/ml/model_improved.py#114-173)**: Implementa Cross-Validation com `TimeSeriesSplit` (5 splits) e `GridSearchCV` para buscar melhores hiperparâmetros.
+
+**Features Avançadas**:
+- 12 features incluindo médias rolling (5 e 3 jogos), tendências, total esperado e diferenças entre times.
+- Função [prepare_improved_features](file:///c:/Users/mathe/Downloads/projeto_bet-main3/src/ml/model_improved.py#343-430) cria features derivadas automaticamente.
+
+---
+
+### 2. Verificação do Sistema de Sugestões + ML
+**Arquivo**: [src/analysis/statistical.py](file:///c:/Users/mathe/Downloads/projeto_bet-main3/src/analysis/statistical.py)
+
+**Bug Crítico Corrigido**:
+- ❌ **Problema**: A função [analyze_match](file:///c:/Users/mathe/Downloads/projeto_bet-main3/src/analysis/statistical.py#236-423) não estava passando `ml_prediction` para [generate_suggestions](file:///c:/Users/mathe/Downloads/projeto_bet-main3/src/analysis/statistical.py#140-235).
+- ✅ **Solução**: Adicionada linha `suggestions = self.generate_suggestions(oportunidades, ml_prediction=ml_prediction)`.
+
+**Como Funciona Agora**:
+1. **Análise Estatística**: Monte Carlo gera probabilidades para todos os mercados.
+2. **Classificação**: Oportunidades são classificadas em Easy/Medium/Hard por probabilidade e odd.
+3. **Filtro ML**: 
+   - Se ML prevê **>10.5 escanteios**: prioriza sugestões **Over**.
+   - Se ML prevê **<9.5 escanteios**: prioriza sugestões **Under**.
+   - Se ML está neutro (9.5-10.5): aceita ambos.
+
+**Benefício**: Dupla camada de segurança - Estatística (passado) + IA (padrões ocultos).
+
+---
+
+### 3. Atualização da Documentação
+
+#### [README_ML.md](file:///c:/Users/mathe/Downloads/projeto_bet-main3/README_ML.md)
+**Seções Adicionadas**:
+- 🚀 **Novas Funcionalidades (v2.0)**:
+  - Explicação do LightGBM e por que foi escolhido.
+  - Detalhes do treinamento com otimização (TimeSeriesSplit + GridSearchCV).
+  - Integração Sugestões + ML com exemplos práticos.
+
+#### [README.md](file:///c:/Users/mathe/Downloads/projeto_bet-main3/README.md)
+**Atualização**:
+- Substituída menção a "Random Forest" por "LightGBM e Random Forest".
+- Adicionada linha sobre "Otimização Automática: Cross-Validation e Hyperparameter Tuning".
+
+---
+
+## 🔍 Insights Importantes
+
+### Sobre o LightGBM
+- **Vantagem**: Mais rápido e geralmente mais preciso que Random Forest para dados tabulares.
+- **Uso no Projeto**: Ativado quando o usuário escolhe "Treinamento Otimizado" no menu.
+- **Dependência**: Requer `pip install lightgbm` (já listado em requirements.txt).
+
+### Sobre a Integração ML + Sugestões
+- **Antes**: Sugestões eram 100% estatísticas, ML apenas exibia previsão separada.
+- **Agora**: ML influencia quais sugestões são mostradas (filtro inteligente).
+- **Próximo Passo**: Treinar um modelo classificador específico para "Qualidade da Aposta" (não apenas prever escanteios).
+
+---
+
+## 📊 Status do Sistema
+
+| Componente | Status | Observação |
+|------------|--------|------------|
+| Multi-Liga | ✅ Implementado | Suporta todas as ligas do [clubes_sofascore.json](file:///c:/Users/mathe/Downloads/projeto_bet-main3/clubes_sofascore.json) |
+| Histórico 3 Anos | ✅ Implementado | Coleta 2025, 2024, 2023 |
+| LightGBM | ✅ Implementado | Modelo principal otimizado |
+| Cross-Validation | ✅ Implementado | TimeSeriesSplit com 5 splits |
+| Hyperparameter Tuning | ✅ Implementado | GridSearchCV automático |
+| Sugestões + ML | ✅ Corrigido | Filtro inteligente ativo |
+| Interface Web | ✅ Atualizado | Modals para Liga e Treino |
+| Documentação | ✅ Atualizado | README_ML.md e README.md |
+
+---
+
+## 🎯 Próximos Passos Recomendados
+
+1. **Testar Treinamento Otimizado**: Após a coleta de dados terminar, execute:
+   ```bash
+   python src/main.py
+   # Escolha: 4. Treinar Modelo de IA
+   # Escolha: 2. Treinamento Otimizado
+   ```
+
+2. **Comparar Modelos**: Teste ambos os modos (Rápido vs Otimizado) e compare MAE.
+
+3. **Validar Sugestões**: Analise um jogo e verifique se as sugestões estão alinhadas com a previsão ML.
+
+4. **Monitorar Performance**: Use [check_predictions()](file:///c:/Users/mathe/Downloads/projeto_bet-main3/src/database/db_manager.py#262-360) para ver taxa de acerto das sugestões GREEN/RED.

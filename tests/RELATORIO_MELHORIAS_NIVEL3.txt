@@ -1,0 +1,237 @@
+═══════════════════════════════════════════════════════════════════════════════
+                        🎯 NÍVEL 3: REDUÇÃO DE MAE PARA < 1.5
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 SITUAÇÃO ATUAL:
+   • MAE Atual: 2.77 escanteios
+   • Meta: < 1.5 escanteios (redução de ~46%)
+   • Features Atuais: 10 (corners, shots, goals, big_chances, offensive_quality)
+
+🔬 ESTRATÉGIAS PARA REDUZIR MAE:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+A) ENRIQUECIMENTO DE FEATURES (Impacto: ALTO)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. **Features de Contexto Tático**
+   ├─ Estilo de Jogo:
+   │  ├─ avg_crosses (cruzamentos) - correlação direta com escanteios
+   │  ├─ avg_final_third_entries (entradas no terço final)
+   │  ├─ avg_touches_in_box (toques na área)
+   │  └─ avg_offsides (impedimentos - indica pressão alta)
+   │
+   ├─ Posse Qualificada:
+   │  ├─ possession_efficiency = (shots / possession) * 100
+   │  ├─ attacking_third_possession (posse no terço ofensivo)
+   │  └─ pass_accuracy_final_third (precisão de passes no ataque)
+   │
+   └─ Pressão Defensiva:
+      ├─ avg_tackles_won (tackles ganhos)
+      ├─ avg_interceptions (interceptações)
+      └─ defensive_actions_per_90 (ações defensivas por jogo)
+
+2. **Features de Forma Recente (Rolling Windows)**
+   ├─ Janelas Múltiplas:
+   │  ├─ avg_corners_last_3 (forma curtíssimo prazo)
+   │  ├─ avg_corners_last_5 (atual)
+   │  ├─ avg_corners_last_10 (médio prazo)
+   │  └─ trend_corners = (last_3 - last_10) / last_10 (tendência)
+   │
+   └─ Weighted Rolling (mais peso para jogos recentes):
+      └─ weighted_avg_corners = Σ(corners * decay_factor^i)
+
+3. **Features de Confronto Direto**
+   ├─ h2h_avg_corners (média de escanteios em confrontos diretos)
+   ├─ h2h_home_advantage (vantagem histórica do mandante)
+   └─ h2h_last_3_matches (forma recente no confronto)
+
+4. **Features de Qualidade de Oponente**
+   ├─ opponent_defensive_strength (força defensiva do adversário)
+   ├─ opponent_avg_corners_conceded (escanteios concedidos pelo oponente)
+   └─ strength_differential = team_strength - opponent_strength
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+B) FEATURES DERIVADAS AVANÇADAS (Impacto: MÉDIO-ALTO)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+5. **Ratios e Índices Compostos**
+   ├─ corner_efficiency = corners / (shots + big_chances)
+   ├─ attacking_intensity = (shots + big_chances + crosses) / possession
+   ├─ pressure_ratio = (tackles + interceptions) / opponent_possession
+   └─ xG_per_shot = expected_goals / total_shots (qualidade de finalização)
+
+6. **Features Temporais**
+   ├─ days_since_last_match (fadiga)
+   ├─ is_weekend (jogos de fim de semana tendem a ter mais escanteios)
+   ├─ month (sazonalidade - início/fim de temporada)
+   └─ is_derby (clássicos tendem a ter padrões diferentes)
+
+7. **Features de Variabilidade**
+   ├─ std_corners_last_5 (desvio padrão - consistência)
+   ├─ cv_corners = std / mean (coeficiente de variação)
+   └─ max_min_diff = max(last_5) - min(last_5) (amplitude)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+C) MELHORIAS NO MODELO (Impacto: MÉDIO)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+8. **Ensemble de Modelos**
+   ├─ Stacking:
+   │  ├─ Nível 1: LightGBM + XGBoost + CatBoost
+   │  └─ Nível 2: Ridge Regression (combina previsões)
+   │
+   ├─ Blending:
+   │  └─ Média ponderada: 0.5*LightGBM + 0.3*XGBoost + 0.2*CatBoost
+   │
+   └─ Voting:
+      └─ Mediana das 3 previsões (robusto a outliers)
+
+9. **Feature Engineering Automático**
+   ├─ Polynomial Features (interações de 2ª ordem):
+   │  └─ Ex: (avg_shots * avg_big_chances)
+   │
+   ├─ Feature Selection:
+   │  ├─ Recursive Feature Elimination (RFE)
+   │  ├─ SHAP values (importância real)
+   │  └─ Remove features com correlação > 0.95
+   │
+   └─ Target Encoding:
+      └─ Codificar times por média histórica de escanteios
+
+10. **Otimização Avançada**
+    ├─ Bayesian Optimization (melhor que Grid Search)
+    ├─ Optuna (framework moderno de tuning)
+    └─ Early Stopping (evita overfitting)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+D) DADOS E QUALIDADE (Impacto: ALTO)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+11. **Mais Dados Históricos**
+    ├─ Expandir de 1 temporada para 3+ temporadas
+    ├─ Incluir mais ligas (mais padrões)
+    └─ Dados de jogos amistosos (com peso menor)
+
+12. **Limpeza de Outliers**
+    ├─ Remover jogos com cartões vermelhos (distorcem padrão)
+    ├─ Remover jogos com clima extremo (neve, chuva forte)
+    └─ Filtrar jogos com menos de 5 minutos de acréscimo (incompletos)
+
+13. **Segmentação de Modelos**
+    ├─ Modelo separado para:
+    │  ├─ Times de ataque (>60% posse média)
+    │  ├─ Times defensivos (<40% posse média)
+    │  └─ Times equilibrados (40-60% posse)
+    │
+    └─ Modelo por liga (cada liga tem padrão diferente)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+E) TÉCNICAS AVANÇADAS (Impacto: MÉDIO-BAIXO)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+14. **Deep Learning**
+    ├─ LSTM (Long Short-Term Memory) para séries temporais
+    ├─ Transformer (atenção para padrões complexos)
+    └─ Neural Network com embeddings de times
+
+15. **Transfer Learning**
+    ├─ Pré-treinar em ligas maiores (Premier League)
+    └─ Fine-tuning em liga alvo (Brasileirão)
+
+16. **Calibração de Probabilidades**
+    ├─ Isotonic Regression
+    └─ Platt Scaling
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 PLANO DE IMPLEMENTAÇÃO PRIORITÁRIO (Para MAE < 1.5)
+═══════════════════════════════════════════════════════════════════════════════
+
+🥇 **PRIORIDADE MÁXIMA (Implementar Primeiro):**
+   1. ✅ Adicionar Features de Contexto Tático (A1)
+      └─ Crosses, Final Third Entries, Touches in Box
+   
+   2. ✅ Implementar Rolling Windows Múltiplas (A2)
+      └─ Last 3, Last 5, Last 10 + Trend
+   
+   3. ✅ Expandir Dados Históricos (D11)
+      └─ 3 temporadas + Todas as 8 ligas
+
+🥈 **PRIORIDADE ALTA (Implementar em Seguida):**
+   4. ⚡ Features de Confronto Direto (A3)
+   5. ⚡ Ratios e Índices Compostos (B5)
+   6. ⚡ Ensemble de Modelos (C8)
+
+🥉 **PRIORIDADE MÉDIA (Implementar Depois):**
+   7. 🔧 Feature Selection Automático (C9)
+   8. 🔧 Segmentação de Modelos (D13)
+   9. 🔧 Limpeza de Outliers (D12)
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 ESTIMATIVA DE IMPACTO
+═══════════════════════════════════════════════════════════════════════════════
+
+Implementação Completa (Prioridades Máxima + Alta):
+   • MAE Esperado: 1.3 - 1.6 escanteios
+   • Redução: ~40-50% do MAE atual
+   • Tempo de Implementação: 2-3 semanas
+   • Complexidade: Média-Alta
+
+Implementação Total (Todas as Prioridades):
+   • MAE Esperado: 0.9 - 1.3 escanteios
+   • Redução: ~50-65% do MAE atual
+   • Tempo de Implementação: 1-2 meses
+   • Complexidade: Alta
+
+═══════════════════════════════════════════════════════════════════════════════
+⚠️  OBSERVAÇÕES IMPORTANTES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. **Lei dos Retornos Decrescentes:**
+   └─ Cada melhoria adicional tem impacto menor que a anterior
+
+2. **Limite Teórico:**
+   └─ MAE < 1.0 é extremamente difícil devido à aleatoriedade inerente do futebol
+
+3. **Trade-offs:**
+   ├─ Mais features = Mais risco de overfitting
+   ├─ Modelos complexos = Mais tempo de treinamento
+   └─ Mais dados = Mais tempo de scraping
+
+4. **Validação Rigorosa:**
+   └─ Sempre usar Cross-Validation para evitar overfitting
+   └─ Testar em dados completamente novos (out-of-sample)
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 FEATURES DISPONÍVEIS NO SOFASCORE (Prontas para Implementar)
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ JÁ COLETADAS:
+   • Ball possession
+   • Total shots
+   • Shots on target
+   • Corner kicks
+   • Fouls
+   • Yellow cards
+   • Red cards
+   • Big chances
+   • Expected goals (xG)
+
+🆕 DISPONÍVEIS PARA COLETAR (Prioridade Alta):
+   • Crosses (cruzamentos)
+   • Touches in penalty area
+   • Final third entries
+   • Offsides
+   • Tackles won
+   • Interceptions
+   • Accurate passes
+   • Pass accuracy %
+   • Long balls
+   • Through balls
+   • Clearances
+   • Blocked shots
+   • Goalkeeper saves
+   • Aerial duels won
+   • Ground duels won
+   • Dribbles successful
+
+═══════════════════════════════════════════════════════════════════════════════
