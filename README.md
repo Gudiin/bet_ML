@@ -38,29 +38,36 @@ As casas de apostas são muito boas em definir essas linhas. Para ganhar dinheir
 
 ## 🏗️ Como Funciona? (Visão Geral)
 
-O sistema funciona como uma fábrica com 4 departamentos principais:
+O sistema funciona como uma fábrica de decisões com 4 departamentos principais que conversam entre si:
 
-1.  **O Olheiro (Coleta de Dados / Scraping)** 🕵️‍♂️
+### 1. O Olheiro (Coleta de Dados / Scraping) 🕵️‍♂️
 
-    - Vai até o site do SofaScore.
-    - Anota tudo sobre os jogos passados: chutes, ataques perigosos, posse de bola, e claro, escanteios.
-    - Guarda tudo num caderno organizado (Banco de Dados).
+- **Função**: Vai até o site do SofaScore e assiste aos replays dos jogos passados.
+- **O que anota**: Chutes, ataques perigosos, posse de bola, e claro, escanteios.
+- **Resultado**: Um banco de dados gigante com o histórico de cada time.
 
-2.  **O Estudante (Machine Learning / IA)** 🧠
+### 2. O Estudante (Machine Learning / IA) 🧠
 
-    - Pega esse caderno e estuda os padrões.
-    - Aprende coisas como: _"Quando o time da casa chuta muito e o visitante defende mal, costumam sair 12 escanteios"_.
-    - Faz uma previsão baseada no que aprendeu.
+- **Função**: Pega esse caderno de anotações e estuda os padrões.
+- **O que aprende**: _"Quando o Time A joga em casa e chuta muito, costumam sair 12 escanteios"_.
+- **Tecnologia**: Usa algoritmos avançados (LightGBM, XGBoost) para prever o número exato de escanteios do próximo jogo.
 
-3.  **O Matemático (Simulação de Monte Carlo)** 🎲
+### 3. O Matemático (Estatística e Monte Carlo) 🎲
 
-    - Pega as estatísticas dos times e "joga" a partida virtualmente **10.000 vezes**.
-    - Conta o que aconteceu nessas simulações.
-    - _"Em 8.500 das 10.000 simulações, saíram mais de 9 escanteios"_. Logo, a probabilidade é de 85%.
+- **Função**: Testa a previsão do Estudante contra a sorte.
+- **O que faz**: Simula a partida virtualmente **10.000 vezes** usando distribuições matemáticas (Poisson).
+- **Resultado**: Uma probabilidade confiável. _"Em 85% das simulações, saíram mais de 9 escanteios"_.
 
-4.  **O Consultor (Interface Web)** 💻
-    - Junta tudo isso e te mostra numa tela bonita.
-    - Te diz: _"Olha, a IA prevê um jogo movimentado e a estatística diz que tem 85% de chance de dar Over. É uma boa aposta!"_
+### 4. O Juiz (Mecanismos de Segurança) ⚖️
+
+- **Função**: Garante que ninguém está alucinando.
+- **Regra do Clamper**: Se a IA prever algo muito absurdo (ex: 20 escanteios num jogo que a média é 10), o Juiz bloqueia e ajusta a previsão para um valor realista (máximo 30% de desvio da média).
+- **Filtro Direcional**: Se a IA diz "Muitos Escanteios", o sistema proíbe apostar em "Poucos". Isso evita contradições.
+
+### 5. O Consultor (Interface Web) 💻
+
+- **Função**: Junta tudo isso e te mostra numa tela bonita.
+- **Entrega**: _"Olha, a IA prevê um jogo movimentado, a estatística confirma com 85% de chance e o risco é baixo. É uma boa aposta!"_
 
 ---
 

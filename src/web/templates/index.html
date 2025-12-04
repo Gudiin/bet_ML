@@ -1,2011 +1,1012 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>🎯 Sistema de Previsão de Escanteios</title>
-
-    <!-- Bootstrap 5 CSS -->
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-    />
-    <!-- Bootstrap Icons -->
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css"
-      rel="stylesheet"
-    />
-    <!-- Google Fonts -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-
+<html lang="pt-BR" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetML Pro | Intelligence System</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
     <style>
-      :root {
-        --bg-dark: #0d1117;
-        --bg-card: #161b22;
-        --bg-card-hover: #1c2128;
-        --border-color: #30363d;
-        --text-primary: #f0f6fc; /* Mais claro para melhor contraste */
-        --text-secondary: #8b949e;
-        --accent-green: #238636; /* Verde GitHub mais legível */
-        --accent-blue: #58a6ff;
-        --accent-yellow: #d29922;
-        --accent-red: #da3633;
-        --accent-purple: #a371f7;
-        --input-bg: #0d1117;
-        --input-border: #30363d;
-      }
+        :root {
+            --bg-body: #0f1116;
+            --bg-panel: #161b22;
+            --bg-input: #0d1117;
+            --accent-primary: #3b82f6; /* Blue 500 */
+            --accent-success: #10b981; /* Emerald 500 */
+            --accent-warning: #f59e0b; /* Amber 500 */
+            --accent-danger: #ef4444; /* Red 500 */
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border-color: #30363d;
+        }
 
-      * {
-        box-sizing: border-box;
-      }
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            padding-bottom: 60px; /* Espaço para o console drawer */
+        }
 
-      body {
-        font-family: "Inter", sans-serif;
-        background: var(--bg-dark);
-        color: var(--text-primary);
-        min-height: 100vh;
-        line-height: 1.6;
-      }
+        /* --- Components --- */
+        .glass-panel {
+            background: rgba(22, 27, 34, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
 
-      /* Navbar */
-      .navbar {
-        background: var(--bg-card) !important;
-        border-bottom: 1px solid var(--border-color);
-      }
+        .navbar {
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 1.5rem;
+        }
 
-      .navbar-brand {
-        font-weight: 700;
-        font-size: 1.3rem;
-        color: var(--text-primary) !important;
-      }
+        .navbar-brand {
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            font-size: 1.25rem;
+        }
 
-      /* Cards */
-      .card {
-        background: var(--bg-card);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      }
+        .nav-pills .nav-link {
+            color: var(--text-muted);
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .nav-pills .nav-link.active {
+            background-color: var(--accent-primary);
+            color: white;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+        }
 
-      .card-header {
-        background: rgba(255, 255, 255, 0.02);
-        border-bottom: 1px solid var(--border-color);
-        font-weight: 600;
-        color: var(--text-primary) !important;
-        padding: 1rem;
-      }
-      
-      .card-body {
-        color: var(--text-primary);
-      }
+        /* --- Status Indicators --- */
+        .status-dot {
+            height: 10px;
+            width: 10px;
+            background-color: var(--text-muted);
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+        .status-dot.active {
+            background-color: var(--accent-success);
+            box-shadow: 0 0 8px var(--accent-success);
+            animation: pulse 2s infinite;
+        }
+        .status-dot.vigilante {
+            background-color: var(--accent-warning);
+            box-shadow: 0 0 8px var(--accent-warning);
+            animation: pulse-fast 1.5s infinite;
+        }
 
-      /* Buttons */
-      .btn-primary {
-        background: #0d6efd;
-        border-color: #0d6efd;
-        color: #ffffff;
-        font-weight: 600;
-      }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        @keyframes pulse-fast {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
 
-      .btn-primary:hover {
-        background: #0a58ca;
-        border-color: #0a58ca;
-      }
+        /* --- Analysis Cards --- */
+        .match-hero {
+            background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, rgba(15, 17, 22, 0) 100%);
+            border-bottom: 1px solid var(--border-color);
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+        }
 
-      .btn-success {
-        background: var(--accent-green);
-        border-color: var(--accent-green);
-        color: #ffffff;
-      }
+        .score-board {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-main);
+            text-align: center;
+        }
 
-      .btn-warning {
-        background: var(--accent-yellow);
-        border-color: var(--accent-yellow);
-        color: #000;
-        font-weight: 600;
-      }
+        .prediction-badge {
+            font-size: 3rem;
+            font-weight: 800;
+            background: -webkit-linear-gradient(45deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
 
-      .btn-outline-secondary {
-        color: var(--text-secondary);
-        border-color: var(--border-color);
-      }
+        .stat-bar-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .stat-bar-bg {
+            flex-grow: 1;
+            height: 6px;
+            background: #2d333b;
+            border-radius: 3px;
+            overflow: hidden;
+            display: flex;
+        }
+        .stat-bar-fill-home { background: var(--accent-primary); }
+        .stat-bar-fill-away { background: var(--accent-danger); }
 
-      .btn-outline-secondary:hover {
-        background: var(--bg-card-hover);
-        color: var(--text-primary);
-        border-color: var(--text-secondary);
-      }
+        /* --- Console Drawer --- */
+        .console-drawer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #0d1117;
+            border-top: 1px solid var(--accent-primary);
+            transition: height 0.3s ease;
+            height: 40px; /* Collapsed height */
+            z-index: 1050;
+            display: flex;
+            flex-direction: column;
+        }
 
-      /* Terminal/Logs */
-      .terminal {
-        background: #010409;
-        border-radius: 8px;
-        font-family: "JetBrains Mono", monospace;
-        font-size: 0.9rem;
-        height: 400px;
-        overflow-y: auto;
-        padding: 15px;
-        border: 1px solid var(--border-color);
-        color: #e6edf3;
-      }
+        .console-header {
+            padding: 8px 20px;
+            background: #010409;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-primary);
+        }
 
-      .terminal::-webkit-scrollbar {
-        width: 8px;
-      }
+        .console-header:hover {
+            background: #0d1117;
+        }
 
-      .terminal::-webkit-scrollbar-track {
-        background: #0d1117;
-      }
+        .console-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            background: #0d1117;
+        }
 
-      .terminal::-webkit-scrollbar-thumb {
-        background: var(--border-color);
-        border-radius: 4px;
-      }
+        .console-drawer.expanded {
+            height: 300px;
+        }
+        
+        /* --- Buttons & Inputs --- */
+        .btn-custom {
+            border-radius: 8px;
+            font-weight: 600;
+            padding: 0.6rem 1.2rem;
+            transition: transform 0.1s;
+        }
+        .btn-custom:active { transform: scale(0.98); }
+        
+        .form-control-dark {
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: white;
+        }
+        .form-control-dark:focus {
+            background-color: var(--bg-input);
+            border-color: var(--accent-primary);
+            color: white;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
 
-      .log-entry {
-        margin-bottom: 6px;
-        line-height: 1.5;
-        border-bottom: 1px solid rgba(48, 54, 61, 0.3);
-        padding-bottom: 2px;
-      }
+        /* Logs Colors */
+        .log-info { color: #9ca3af; }
+        .log-success { color: #10b981; }
+        .log-error { color: #ef4444; }
+        .log-highlight { color: #a78bfa; font-weight: bold; }
+        .log-warning { color: #fbbf24; }
 
-      .log-timestamp {
-        color: #8b949e;
-        margin-right: 10px;
-        font-size: 0.8em;
-      }
-
-      .log-info { color: #e6edf3; }
-      .log-success { color: #3fb950; font-weight: 500; }
-      .log-error { color: #f85149; font-weight: bold; }
-      .log-warning { color: #d29922; }
-      .log-highlight { color: #a371f7; font-weight: bold; }
-
-      /* Form Controls - High Contrast */
-      .form-label {
-        color: var(--text-primary);
-        font-weight: 500;
-        margin-bottom: 0.5rem;
-      }
-
-      .form-control,
-      .form-select {
-        background-color: #010409 !important;
-        border: 1px solid var(--border-color) !important;
-        color: #e6edf3 !important;
-        font-size: 1rem;
-        padding: 0.75rem;
-      }
-
-      .form-control:focus,
-      .form-select:focus {
-        background-color: #010409 !important;
-        border-color: var(--accent-blue) !important;
-        color: #e6edf3 !important;
-        box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
-      }
-
-      .form-control::placeholder {
-        color: #6e7681;
-      }
-      
-      /* Select Options Visibility */
-      select option {
-        background-color: #161b22;
-        color: #e6edf3;
-        padding: 10px;
-      }
-
-      .form-check-input {
-        background-color: #010409;
-        border-color: var(--border-color);
-        width: 1.2em;
-        height: 1.2em;
-      }
-
-      .form-check-input:checked {
-        background-color: var(--accent-blue);
-        border-color: var(--accent-blue);
-      }
-      
-      .form-check-label {
-        color: var(--text-primary);
-        margin-left: 0.5rem;
-      }
-
-      /* Stats Cards */
-      .stat-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        padding: 20px;
-        text-align: center;
-        transition: transform 0.2s, border-color 0.2s;
-      }
-
-      .stat-card:hover {
-        transform: translateY(-2px);
-        border-color: var(--accent-blue);
-      }
-
-      .stat-value {
-        font-size: 2.2rem;
-        font-weight: 800;
-        color: var(--accent-blue);
-        text-shadow: 0 0 10px rgba(88, 166, 255, 0.2);
-      }
-
-      .stat-label {
-        color: var(--text-secondary);
-        font-size: 0.95rem;
-        font-weight: 500;
-        margin-top: 5px;
-      }
-
-      /* Progress */
-      .progress {
-        background: var(--bg-dark);
-        border-radius: 8px;
-        height: 12px;
-        border: 1px solid var(--border-color);
-      }
-
-      .progress-bar {
-        background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
-        border-radius: 6px;
-      }
-
-      /* Tables - High Contrast */
-      .table {
-        color: var(--text-primary);
-        --bs-table-bg: transparent;
-        --bs-table-border-color: var(--border-color);
-      }
-      
-      .table thead th {
-        background: #010409;
-        border-bottom: 2px solid var(--border-color);
-        font-weight: 700;
-        text-transform: uppercase;
-        font-size: 0.8rem;
-        letter-spacing: 0.5px;
-        color: var(--text-secondary);
-        padding: 1rem;
-      }
-      
-      .table td {
-        border-color: var(--border-color);
-        vertical-align: middle;
-        color: var(--text-primary);
-        padding: 1rem;
-        font-size: 0.95rem;
-      }
-      
-      .table-hover tbody tr:hover {
-        background-color: rgba(88, 166, 255, 0.1);
-      }
-
-      /* Badges */
-      .badge {
-        padding: 0.5em 0.8em;
-        font-weight: 600;
-        font-size: 0.85rem;
-        border-radius: 6px;
-      }
-      
-      .badge-over { background: #238636; color: #fff; -webkit-text-fill-color: #fff; }
-      .badge-under { background: #1f6feb; color: #fff; -webkit-text-fill-color: #fff; }
-      .badge-neutral { background: #6e7681; color: #fff; -webkit-text-fill-color: #fff; }
-
-      .badge-easy { background: #238636; color: #fff; border: 1px solid rgba(255,255,255,0.2); -webkit-text-fill-color: #fff; }
-      .badge-medium { background: #d29922; color: #000; border: 1px solid rgba(0,0,0,0.1); -webkit-text-fill-color: #000; }
-      .badge-hard { background: #da3633; color: #fff; border: 1px solid rgba(255,255,255,0.2); -webkit-text-fill-color: #fff; }
-
-      /* Status Indicator */
-      .status-indicator {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 8px;
-      }
-
-      .status-idle { background: #6e7681; box-shadow: 0 0 5px #6e7681; }
-      .status-running { background: #3fb950; box-shadow: 0 0 8px #3fb950; animation: pulse 1.5s infinite; }
-
-      @keyframes pulse {
-        0% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.7; transform: scale(1.1); }
-        100% { opacity: 1; transform: scale(1); }
-      }
-
-      /* Tabs */
-      .nav-tabs {
-        border-bottom: 1px solid var(--border-color);
-      }
-
-      .nav-tabs .nav-link {
-        color: var(--text-secondary);
-        border: none;
-        padding: 12px 24px;
-        font-weight: 600;
-        transition: all 0.2s;
-      }
-
-      .nav-tabs .nav-link:hover {
-        color: var(--text-primary);
-        background: rgba(255,255,255,0.05);
-        border-radius: 6px 6px 0 0;
-      }
-
-      .nav-tabs .nav-link.active {
-        background: transparent;
-        color: var(--accent-blue);
-        border-bottom: 3px solid var(--accent-blue);
-      }
-
-      /* Modals */
-      .modal-content {
-        background: #161b22;
-        border: 1px solid var(--border-color);
-        box-shadow: 0 15px 30px rgba(0,0,0,0.5);
-      }
-      
-      .modal-header {
-        border-bottom: 1px solid var(--border-color);
-        background: #0d1117;
-      }
-      
-      .modal-title {
-        color: var(--text-primary);
-        font-weight: 700;
-      }
-      
-      .modal-body {
-        color: var(--text-primary);
-        background: #161b22;
-      }
-      
-      .modal-footer {
-        border-top: 1px solid var(--border-color);
-        background: #0d1117;
-      }
-      
-      .btn-close-white {
-        filter: invert(1) grayscale(100%) brightness(200%);
-      }
-
-      /* Analysis Results */
-      .result-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        padding: 25px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      }
-
-      .result-card.highlight {
-        border: 2px solid var(--accent-purple);
-        background: rgba(163, 113, 247, 0.05);
-      }
-
-      .ml-prediction {
-        font-size: 3.5rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #58a6ff, #a371f7);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        text-shadow: 0 0 30px rgba(88, 166, 255, 0.1);
-      }
-
-      /* Responsive */
-      @media (max-width: 768px) {
-        .terminal { height: 300px; }
-        .stat-value { font-size: 1.8rem; }
-        .ml-prediction { font-size: 2.5rem; }
-      }
-
-      /* Config Section */
-      .config-section {
-        background: #010409;
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
-      }
-
-      .config-section h6 {
-        color: var(--accent-blue);
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        font-weight: 700;
-        margin-bottom: 15px;
-        border-bottom: 1px solid var(--border-color);
-        padding-bottom: 5px;
-      }
     </style>
-  </head>
-  <body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
-      <div class="container-fluid">
-        <a class="navbar-brand" href="#">
-          <i class="bi bi-bullseye me-2"></i>Previsão de Escanteios
-        </a>
-        <div class="d-flex align-items-center">
-          <span
-            id="statusIndicator"
-            class="status-indicator status-idle"
-          ></span>
-          <span id="statusText" class="text-secondary me-3">Aguardando</span>
-          <button
-            class="btn btn-outline-secondary btn-sm"
-            data-bs-toggle="modal"
-            data-bs-target="#configModal"
-          >
-            <i class="bi bi-gear"></i>
-          </button>
+</head>
+<body>
+
+    <nav class="navbar sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="#">
+                <i class="bi bi-cpu-fill text-primary me-2"></i>
+                BetML <span class="badge bg-primary ms-2" style="font-size: 0.6rem; opacity: 0.8;">PRO V2</span>
+            </a>
+            
+            <div class="d-flex align-items-center gap-3">
+                <div id="systemStatus" class="d-flex align-items-center small text-muted border border-secondary rounded-pill px-3 py-1">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Sistema Ocioso</span>
+                </div>
+                
+                <div class="vr mx-2 text-secondary"></div>
+                
+                <button class="btn btn-sm btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#configModal">
+                    <i class="bi bi-gear-fill"></i>
+                </button>
+            </div>
         </div>
-      </div>
     </nav>
 
-    <div class="container-fluid py-4">
-      <div class="row">
-        <!-- Sidebar / Controls -->
-        <div class="col-lg-3 mb-4">
-          <!-- Quick Actions -->
-          <div class="card mb-4">
-            <div style="color: white !important" class="card-header">
-              <i class="bi bi-lightning-charge me-2"></i>Ações Rápidas
-            </div>
-            <div class="card-body">
-              <div class="d-grid gap-2">
-                <button
-                  id="btnUpdateDB"
-                  class="btn btn-primary"
-                  onclick="updateDatabase()"
-                >
-                  <i class="bi bi-cloud-download me-2"></i>Atualizar Banco
-                </button>
-                <button
-                  id="btnUpdatePending"
-                  class="btn btn-warning"
-                  onclick="updatePendingMatches()"
-                >
-                  <i class="bi bi-arrow-repeat me-2"></i>Atualizar Pendentes
-                </button>
-                <button
-                  id="btnTrain"
-                  class="btn btn-success"
-                  onclick="trainModel()"
-                >
-                  <i class="bi bi-cpu me-2"></i>Treinar Modelo
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Update Match -->
-          <div class="card mb-4">
-            <div class="card-header">
-              <i class="bi bi-arrow-repeat me-2"></i>Atualizar Jogo
-            </div>
-            <div class="card-body">
-              <div class="input-group">
-                <input type="text" id="updateUrlInput" class="form-control" placeholder="URL ou ID do Jogo">
-                <button class="btn btn-outline-primary" type="button" onclick="updateMatch()">
-                  <i class="bi bi-arrow-repeat"></i>
-                </button>
-              </div>
-              <div class="form-text text-secondary mt-2">
-                Atualize dados e valide apostas de um jogo específico.
-              </div>
-            </div>
-          </div>
-
-          <!-- Analyze Match -->
-          <div class="card mb-4">
-            <div class="card-header">
-              <i class="bi bi-search me-2"></i>Analisar Partida
-            </div>
-            <div class="card-body">
-              <div class="mb-3">
-                <label class="form-label small text-secondary"
-                  >URL ou ID do Jogo</label
-                >
-                <input
-                  type="text"
-                  id="matchUrl"
-                  class="form-control"
-                  placeholder="https://sofascore.com/...id:12345"
-                />
-              </div>
-              <button
-                id="btnAnalyze"
-                class="btn btn-warning w-100"
-                onclick="analyzeMatch()"
-              >
-                <i class="bi bi-bar-chart me-2"></i>Analisar
-              </button>
-            </div>
-          </div>
-
-          <!-- Stats -->
-          <div class="card">
-            <div class="card-header">
-              <i class="bi bi-graph-up me-2"></i>Estatísticas
-            </div>
-            <div class="card-body">
-              <div class="row g-2">
-                <div class="col-6">
-                  <div class="stat-card">
-                    <div class="stat-value" id="statMatches">-</div>
-                    <div class="stat-label">Jogos</div>
-                  </div>
-                </div>
-                <div class="col-6">
-                  <div class="stat-card">
-                    <div class="stat-value" id="statPredictions">-</div>
-                    <div class="stat-label">Previsões</div>
-                  </div>
-                </div>
-                <div class="col-12">
-                  <div class="stat-card">
-                    <div class="stat-value" id="statAccuracy">-</div>
-                    <div class="stat-label">Taxa de Acerto</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Main Content -->
-        <div class="col-lg-9">
-          <!-- Scanner de Oportunidades Card -->
-          <div class="card mb-4">
-            <div class="card-header d-flex justify-content-between align-items-center">
-              <span><i class="bi bi-radar"></i> Scanner de Oportunidades (Agenda do Dia)</span>
-              <span class="badge bg-warning text-dark">NOVO</span>
-            </div>
-            <div class="card-body">
-              <div class="row align-items-end">
-                <div class="col-md-4">
-                  <label class="form-label text-secondary">Data da Análise</label>
-                  <div class="btn-group w-100" role="group">
-                    <input type="radio" class="btn-check" name="scannerDate" id="dateToday" value="today" checked>
-                    <label class="btn btn-outline-secondary w-100" for="dateToday">Hoje</label>
-                  </div>
-                </div>
-                <div class="col-md-4">
-                  <label class="form-label text-secondary">Filtro de Ligas</label>
-                  <select class="form-select bg-dark text-light border-secondary" id="scannerLeagues">
-                    <option value="top7" selected>8 Ligas cadastradas</option>
-                  </select>
-                </div>
-                <div class="col-md-4">
-                  <button id="btnStartScanner" class="btn btn-primary w-100" onclick="startScanner()">
-                    <i class="bi bi-search"></i> Iniciar Scanner
-                  </button>
-                </div>
-              </div>
-
-              <!-- Resultados do Scanner -->
-              <div id="scannerResults" class="mt-4" style="display: none;">
-                <h5 class="text-secondary mb-3">🎯 Melhores Oportunidades Encontradas</h5>
-                <div class="table-responsive">
-                  <table class="table table-dark table-hover">
-                    <thead>
-                      <tr>
-                        <th>Horário</th>
-                        <th>Partida</th>
-                        <th>Campeonato</th>
-                        <th>Previsão ML</th>
-                        <th>Melhor Aposta</th>
-                        <th>Confiança</th>
-                      </tr>
-                    </thead>
-                    <tbody id="scannerTableBody">
-                      <!-- Preenchido via JS -->
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-          <!-- Progress Bar (hidden by default) -->
-          <div id="progressContainer" class="mb-4" style="display: none">
-            <div class="card">
-              <div class="card-body">
-                <div class="d-flex justify-content-between mb-2">
-                  <span id="progressTask">Processando...</span>
-                  <span id="progressPercent">0%</span>
-                </div>
-                <div class="progress">
-                  <div
-                    id="progressBar"
-                    class="progress-bar"
-                    role="progressbar"
-                    style="width: 0%"
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Tabs -->
-          <ul class="nav nav-tabs mb-4" role="tablist">
+    <div class="container py-4">
+        
+        <ul class="nav nav-pills mb-4 justify-content-center" id="mainTab" role="tablist">
             <li class="nav-item">
-              <button
-                class="nav-link active"
-                data-bs-toggle="tab"
-                data-bs-target="#tabLogs"
-              >
-                <i class="bi bi-terminal me-2"></i>Logs
-              </button>
+                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-scanner">
+                    <i class="bi bi-radar me-2"></i>Scanner Live
+                </button>
             </li>
             <li class="nav-item">
-              <button
-                class="nav-link"
-                data-bs-toggle="tab"
-                data-bs-target="#tabResults"
-              >
-                <i class="bi bi-trophy me-2"></i>Resultados
-              </button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-analysis">
+                    <i class="bi bi-search me-2"></i>Análise Individual
+                </button>
             </li>
             <li class="nav-item">
-              <button
-                class="nav-link"
-                data-bs-toggle="tab"
-                data-bs-target="#tabHistory"
-              >
-                <i class="bi bi-clock-history me-2"></i>Histórico
-              </button>
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-history">
+                    <i class="bi bi-collection me-2"></i>Histórico
+                </button>
             </li>
-          </ul>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-stats">
+                    <i class="bi bi-graph-up me-2"></i>Estatísticas
+                </button>
+            </li>
+        </ul>
 
-          <div class="tab-content">
-            <!-- Logs Tab -->
-            <div class="tab-pane fade show active" id="tabLogs">
-              <div class="card">
-                <div
-                  class="card-header d-flex justify-content-between align-items-center"
-                >
-                  <span
-                    ><i class="bi bi-terminal me-2"></i>Console de
-                    Execução</span
-                  >
-                  <button
-                    class="btn btn-outline-secondary btn-sm"
-                    onclick="clearLogs()"
-                  >
-                    <i class="bi bi-trash"></i> Limpar
-                  </button>
-                </div>
-                <div class="card-body p-0">
-                  <div id="terminal" class="terminal">
-                    <div class="log-entry">
-                      <span class="log-timestamp">[--:--:--]</span>
-                      <span class="log-info"
-                        >🚀 Sistema pronto. Aguardando comandos...</span
-                      >
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+        <div class="tab-content" id="mainTabContent">
+            
+            <div class="tab-pane fade show active" id="pills-scanner">
+                <div class="row g-4">
+                    <div class="col-12">
+                        <div class="glass-panel p-4">
+                            <div class="row align-items-end g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label text-muted small text-uppercase fw-bold">Período</label>
+                                    <div class="btn-group w-100" role="group">
+                                        <input type="radio" class="btn-check" name="scannerDate" id="dateToday" value="today" checked>
+                                        <label class="btn btn-outline-primary" for="dateToday">Hoje</label>
+                                        <input type="radio" class="btn-check" name="scannerDate" id="dateTom" value="tomorrow">
+                                        <label class="btn btn-outline-primary" for="dateTom">Amanhã</label>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-4">
+                                    <label class="form-label text-muted small text-uppercase fw-bold">Ligas</label>
+                                    <select class="form-select form-control-dark" id="scannerLeagues">
+                                        <option value="top7" selected>⭐ Top 8 Principais</option>
+                                        <option value="all">🌐 Todas as Ligas</option>
+                                    </select>
+                                </div>
 
-            <!-- Results Tab -->
-            <div class="tab-pane fade" id="tabResults">
-              <div id="resultsContainer">
-                <div class="text-center text-secondary py-5">
-                  <i class="bi bi-inbox display-1"></i>
-                  <p class="mt-3">
-                    Nenhuma análise realizada ainda.<br />Use o painel lateral
-                    para analisar uma partida.
-                  </p>
-                </div>
-              </div>
-            </div>
+                                <div class="col-md-2">
+                                    <div class="form-check form-switch p-0 d-flex flex-column align-items-center pt-2">
+                                        <label class="form-check-label text-muted small text-uppercase fw-bold mb-2" for="vigilanteToggle">
+                                            <i class="bi bi-shield-lock me-1"></i>Vigilante
+                                        </label>
+                                        <input class="form-check-input ms-0" style="width: 3em; height: 1.5em;" type="checkbox" id="vigilanteToggle" onchange="toggleVigilante()">
+                                    </div>
+                                </div>
 
-            <!-- History Tab -->
-            <div class="tab-pane fade" id="tabHistory">
-              <div class="card">
-                <div class="card-header">
-                  <i class="bi bi-list-ul me-2"></i>Análises Anteriores
-                </div>
-                <div class="card-body p-0">
-                  <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                      <thead>
-                        <tr>
-                          <th>Jogo</th>
-                          <th>Placar</th>
-                          <th>Previsão ML</th>
-                          <th>Análises</th>
-                          <th>Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody id="historyTable">
-                        <tr>
-                          <td
-                            colspan="5"
-                            class="text-center text-secondary py-4"
-                          >
-                            Carregando...
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Update Modal -->
-    <div class="modal fade" id="updateModal" tabindex="-1">
-      <div class="modal-dialog">
-        <div class="modal-content" style="background: var(--bg-card); border-color: var(--border-color)">
-          <div class="modal-header" style="border-color: var(--border-color)">
-            <h5 class="modal-title"><i class="bi bi-cloud-download me-2"></i>Atualizar Banco de Dados</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <div class="mb-3">
-              <label class="form-label">Liga / Competição</label>
-              <select class="form-select" id="leagueSelect">
-                <option value="Brasileirão Série A" selected>Brasileirão Série A</option>
-                <!-- Populated via JS -->
-              </select>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Temporada</label>
-              <select class="form-select" id="seasonSelect">
-                <option value="2025" selected>2025 (Atual)</option>
-                <option value="2024">2024</option>
-                <option value="2023">2023</option>
-              </select>
-            </div>
-            <div class="alert alert-info small">
-              <i class="bi bi-info-circle me-1"></i>
-              A atualização pode levar alguns minutos dependendo da quantidade de jogos.
-            </div>
-          </div>
-          <div class="modal-footer" style="border-color: var(--border-color)">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="button" class="btn btn-primary" onclick="confirmUpdate()">
-              <i class="bi bi-check-lg me-2"></i>Iniciar Atualização
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Train Modal -->
-    <div class="modal fade" id="trainModal" tabindex="-1">
-      <div class="modal-dialog">
-        <div class="modal-content" style="background: var(--bg-card); border-color: var(--border-color)">
-          <div class="modal-header" style="border-color: var(--border-color)">
-            <h5 class="modal-title"><i class="bi bi-cpu me-2"></i>Treinar Modelo de IA</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <div class="mb-3">
-              <label class="form-label">Modo de Treinamento</label>
-              <div class="form-check mb-2">
-                <input class="form-check-input" type="radio" name="trainMode" id="trainStandard" value="standard" checked>
-                <label class="form-check-label" for="trainStandard">
-                  <strong>Rápido (Padrão)</strong>
-                  <div class="text-secondary small">Treina Random Forest/LightGBM com parâmetros padrão.</div>
-                </label>
-              </div>
-              <div class="form-check">
-                <input class="form-check-input" type="radio" name="trainMode" id="trainOptimized" value="optimized">
-                <label class="form-check-label" for="trainOptimized">
-                  <strong>Otimizado (Recomendado)</strong>
-                  <div class="text-secondary small">Executa Cross-Validation e busca os melhores hiperparâmetros (Mais lento).</div>
-                </label>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer" style="border-color: var(--border-color)">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="button" class="btn btn-success" onclick="confirmTrain()">
-              <i class="bi bi-play-fill me-2"></i>Iniciar Treinamento
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Config Modal -->
-    <div class="modal fade" id="configModal" tabindex="-1">
-      <div class="modal-dialog">
-        <div
-          class="modal-content"
-          style="background: var(--bg-card); border-color: var(--border-color)"
-        >
-          <div class="modal-header" style="border-color: var(--border-color)">
-            <h5 class="modal-title">
-              <i class="bi bi-gear me-2"></i>Configurações
-            </h5>
-            <button
-              type="button"
-              class="btn-close btn-close-white"
-              data-bs-dismiss="modal"
-            ></button>
-          </div>
-          <div class="modal-body">
-            <!-- Scraper Config -->
-            <div class="config-section">
-              <h6>Scraper</h6>
-              <div class="form-check form-switch mb-2">
-                <input
-                  class="form-check-input"
-                  type="checkbox"
-                  id="configHeadless"
-                  checked
-                />
-                <label class="form-check-label" for="configHeadless"
-                  >Modo Headless (sem janela)</label
-                >
-              </div>
-            </div>
-
-            <!-- Model Config -->
-            <div class="config-section">
-              <h6>Modelo de IA</h6>
-              <div class="mb-3">
-                <label class="form-label small">Tipo de Modelo</label>
-                <select class="form-select" id="configModelType">
-                  <option value="lightgbm">LightGBM (Recomendado)</option>
-                  <option value="random_forest">Random Forest</option>
-                  <option value="xgboost">XGBoost</option>
-                </select>
-              </div>
-              <div class="form-check form-switch">
-                <input
-                  class="form-check-input"
-                  type="checkbox"
-                  id="configImprovedModel"
-                  checked
-                />
-                <label class="form-check-label" for="configImprovedModel"
-                  >Usar modelo melhorado (v2)</label
-                >
-              </div>
-            </div>
-
-            <!-- Monte Carlo Config -->
-            <div class="config-section">
-              <h6>Monte Carlo</h6>
-              <div class="mb-3">
-                <label class="form-label small">Número de Simulações</label>
-                <input
-                  type="number"
-                  class="form-control"
-                  id="configSimulations"
-                  value="10000"
-                  min="1000"
-                  max="100000"
-                  step="1000"
-                />
-              </div>
-              <div class="mb-3">
-                <label class="form-label small">Jogos no Histórico</label>
-                <input
-                  type="number"
-                  class="form-control"
-                  id="configHistoryGames"
-                  value="5"
-                  min="1"
-                  max="20"
-                />
-              </div>
-            </div>
-
-            <!-- Live Update Config -->
-            <div class="config-section">
-              <h6>Atualização Automática</h6>
-              <div class="mb-3">
-                <label class="form-label small">Intervalo de Atualização (minutos)</label>
-                <input
-                  type="number"
-                  class="form-control"
-                  id="configLiveUpdateInterval"
-                  value="5"
-                  min="1"
-                  max="60"
-                  step="1"
-                />
-                <small class="text-secondary">Frequência de verificação de jogos ao vivo</small>
-              </div>
-            </div>
-
-            <!-- Confidence Config -->
-            <div class="config-section">
-              <h6>Filtros</h6>
-              <div class="mb-0">
-                <label class="form-label small">Threshold de Confiança</label>
-                <div class="d-flex align-items-center">
-                  <input
-                    type="range"
-                    class="form-range me-3"
-                    id="configConfidence"
-                    min="0.5"
-                    max="0.9"
-                    step="0.05"
-                    value="0.65"
-                  />
-                  <span id="confidenceValue">65%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="modal-footer" style="border-color: var(--border-color)">
-            <button
-              type="button"
-              class="btn btn-outline-secondary"
-              data-bs-dismiss="modal"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              class="btn btn-primary"
-              onclick="saveConfig()"
-            >
-              <i class="bi bi-check-lg me-2"></i>Salvar
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Toast Container -->
-    <div class="toast-container position-fixed bottom-0 end-0 p-3">
-      <div id="toast" class="toast" role="alert">
-        <div class="toast-header">
-          <i class="bi bi-info-circle me-2" id="toastIcon"></i>
-          <strong class="me-auto" id="toastTitle">Notificação</strong>
-          <button
-            type="button"
-            class="btn-close btn-close-white"
-            data-bs-dismiss="toast"
-          ></button>
-        </div>
-        <div class="toast-body" id="toastBody"></div>
-      </div>
-    </div>
-
-    <!-- jQuery -->
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <!-- Bootstrap 5 JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
-    <script>
-      // ============================================================
-      // Estado Global
-      // ============================================================
-      let eventSource = null;
-      let isRunning = false;
-      let currentMatchId = null;
-
-      // ============================================================
-      // SSE - Server-Sent Events
-      // ============================================================
-      function connectSSE() {
-        if (eventSource) {
-          eventSource.close();
-        }
-
-        eventSource = new EventSource("/api/logs/stream");
-
-        eventSource.onmessage = function (event) {
-          const data = JSON.parse(event.data);
-
-          if (data.type === "heartbeat") {
-            return; // Ignora heartbeats
-          }
-
-          if (data.type === "progress") {
-            updateProgress(
-              parseInt(data.message.replace("__PROGRESS__", "")),
-              data.task
-            );
-            return;
-          }
-
-          appendLog(data);
-        };
-
-        eventSource.onerror = function () {
-          console.log("SSE connection error, reconnecting...");
-          setTimeout(connectSSE, 3000);
-        };
-      }
-
-      // ============================================================
-      // Logs
-      // ============================================================
-      function appendLog(log) {
-        const terminal = document.getElementById("terminal");
-        const entry = document.createElement("div");
-        entry.className = "log-entry";
-        entry.innerHTML = `
-                <span class="log-timestamp">[${log.timestamp}]</span>
-                <span class="log-${log.type}">${escapeHtml(log.message)}</span>
-            `;
-        terminal.appendChild(entry);
-        terminal.scrollTop = terminal.scrollHeight;
-      }
-
-      function clearLogs() {
-        const terminal = document.getElementById("terminal");
-        terminal.innerHTML = `
-                <div class="log-entry">
-                    <span class="log-timestamp">[${new Date().toLocaleTimeString()}]</span>
-                    <span class="log-info">🗑️ Logs limpos.</span>
-                </div>
-            `;
-      }
-
-      function escapeHtml(text) {
-        const div = document.createElement("div");
-        div.textContent = text;
-        return div.innerHTML;
-      }
-
-      // ============================================================
-      // Progress
-      // ============================================================
-      function updateProgress(percent, task) {
-        const container = document.getElementById("progressContainer");
-        const bar = document.getElementById("progressBar");
-        const percentText = document.getElementById("progressPercent");
-        const taskText = document.getElementById("progressTask");
-
-        container.style.display = "block";
-        bar.style.width = percent + "%";
-        percentText.textContent = percent + "%";
-        if (task) {
-          taskText.textContent = task;
-        }
-
-        if (percent >= 100) {
-          setTimeout(() => {
-            container.style.display = "none";
-            bar.style.width = "0%";
-          }, 2000);
-        }
-      }
-
-      function setStatus(running, text) {
-        isRunning = running;
-        const indicator = document.getElementById("statusIndicator");
-        const statusText = document.getElementById("statusText");
-
-        indicator.className =
-          "status-indicator " + (running ? "status-running" : "status-idle");
-        statusText.textContent =
-          text || (running ? "Executando..." : "Aguardando");
-
-        // Disable/enable buttons
-        document
-          .querySelectorAll("#btnUpdateDB, #btnTrain, #btnAnalyze, #btnStartScanner, #btnUpdatePending")
-          .forEach((btn) => {
-            btn.disabled = running;
-          });
-      }
-
-      // ============================================================
-      // API Calls
-      // ============================================================
-      function updateDatabase() {
-        if (isRunning) return;
-        new bootstrap.Modal(document.getElementById('updateModal')).show();
-      }
-
-      function updatePendingMatches() {
-        if (isRunning) return;
-        setStatus(true, "Atualizando jogos pendentes...");
-
-        $.ajax({
-            url: "/api/matches/update_pending",
-            method: "POST",
-            contentType: "application/json"
-        })
-        .done(function() {
-            showToast("Atualização iniciada", "Verificando jogos pendentes...", "info");
-            pollStatus();
-        })
-        .fail(function(xhr) {
-            const error = xhr.responseJSON?.error || "Erro desconhecido";
-            showToast("Erro", error, "error");
-            setStatus(false);
-        });
-      }
-
-      function confirmUpdate() {
-        const league = document.getElementById('leagueSelect').value;
-        const season = document.getElementById('seasonSelect').value;
-        const modal = bootstrap.Modal.getInstance(document.getElementById('updateModal'));
-        
-        modal.hide();
-        setStatus(true, `Atualizando ${league}...`);
-
-        $.ajax({
-            url: "/api/database/update",
-            method: "POST",
-            contentType: "application/json",
-            data: JSON.stringify({ league_name: league, season_year: season })
-        })
-        .done(function() {
-            showToast("Atualização iniciada", `Atualizando ${league} (${season})`, "info");
-            pollStatus();
-        })
-        .fail(function(xhr) {
-            const error = xhr.responseJSON?.error || "Erro desconhecido";
-            showToast("Erro", error, "error");
-            setStatus(false);
-        });
-      }
-
-      function updateMatch() {
-          const url = document.getElementById('updateUrlInput').value;
-          if (!url) {
-              showToast('Atenção', 'Por favor, insira uma URL ou ID.', 'warning');
-              return;
-          }
-          
-          $.ajax({
-              url: '/api/database/update_match',
-              method: 'POST',
-              contentType: 'application/json',
-              data: JSON.stringify({ url: url })
-          })
-          .done(function() {
-              showToast("Sucesso", "Atualização iniciada!", "success");
-              pollStatus(); // Assuming update_match also triggers a task that needs polling
-          })
-          .fail(function(xhr) {
-              const error = xhr.responseJSON?.error || "Erro desconhecido";
-              showToast("Erro", error, "error");
-          });
-      }
-
-      function trainModel() {
-        if (isRunning) return;
-        new bootstrap.Modal(document.getElementById('trainModal')).show();
-      }
-
-      function confirmTrain() {
-        const mode = document.querySelector('input[name="trainMode"]:checked').value;
-        const modal = bootstrap.Modal.getInstance(document.getElementById('trainModal'));
-        
-        modal.hide();
-        setStatus(true, "Treinando modelo...");
-
-        $.ajax({
-            url: "/api/model/train",
-            method: "POST",
-            contentType: "application/json",
-            data: JSON.stringify({ mode: mode })
-        })
-        .done(function() {
-            showToast("Treinamento iniciado", `Modo: ${mode === 'optimized' ? 'Otimizado' : 'Padrão'}`, "info");
-            pollStatus();
-        })
-        .fail(function(xhr) {
-            const error = xhr.responseJSON?.error || "Erro desconhecido";
-            showToast("Erro", error, "error");
-            setStatus(false);
-        });
-      }
-
-      function analyzeMatch() {
-        if (isRunning) {
-          showToast("Aguarde", "Já existe uma tarefa em execução.", "warning");
-          return;
-        }
-
-        const url = document.getElementById("matchUrl").value.trim();
-        if (!url) {
-          showToast("Atenção", "Digite a URL ou ID do jogo.", "warning");
-          return;
-        }
-
-        console.log("🔍 Iniciando análise de:", url);
-        setStatus(true, "Analisando...");
-
-        $.ajax({
-          url: "/api/match/analyze",
-          method: "POST",
-          contentType: "application/json",
-          data: JSON.stringify({ url: url }),
-        })
-          .done(function (response) {
-            console.log("✅ Resposta da API:", response);
-            currentMatchId = response.match_id;
-            showToast(
-              "Análise iniciada",
-              `Analisando jogo ID: ${response.match_id}`,
-              "info"
-            );
-            pollStatus();
-          })
-          .fail(function (xhr) {
-            console.error("❌ Erro na requisição:", xhr);
-            const error = xhr.responseJSON?.error || "Erro desconhecido";
-            showToast("Erro", error, "error");
-            setStatus(false);
-          });
-      }
-
-      function pollStatus() {
-        const poll = setInterval(function () {
-          $.get("/api/status").done(function (status) {
-            if (!status.is_running) {
-              clearInterval(poll);
-              setStatus(false);
-
-              // Load results if we just analyzed a match
-              if (currentMatchId) {
-                loadMatchResult(currentMatchId);
-                currentMatchId = null;
-              }
-
-              // Refresh stats and history
-              loadStats();
-              loadHistory();
-            }
-          });
-        }, 1000);
-      }
-
-      // ============================================================
-      // Results
-      // ============================================================
-      function renderMLPrediction(mlPred) {
-        if (!mlPred) {
-          return `
-            <div class="ml-prediction">-</div>
-            <p class="text-secondary mb-0">Previsão ML indisponível</p>
-          `;
-        }
-
-        const pred = mlPred.toFixed(1);
-        let interpretation = '';
-        let badge = '';
-        
-        if (mlPred > 10.5) {
-          interpretation = 'Jogo com MUITOS escanteios';
-          badge = '<span class="badge badge-over ms-2">▲ OVER</span>';
-        } else if (mlPred < 9.5) {
-          interpretation = 'Jogo com POUCOS escanteios';
-          badge = '<span class="badge badge-under ms-2">▼ UNDER</span>';
-        } else {
-          interpretation = 'Jogo EQUILIBRADO';
-          badge = '<span class="badge badge-neutral ms-2">~ NEUTRO</span>';
-        }
-
-        return `
-          <div class="ml-prediction">${pred} ${badge}</div>
-          <p class="text-secondary mb-1"><strong>Total do Jogo (FT)</strong></p>
-          <p class="text-secondary mb-0" style="font-size: 0.85rem;">${interpretation}</p>
-        `;
-      }
-
-      function loadMatchResult(matchId) {
-        console.log("📊 Carregando resultado do jogo:", matchId);
-        
-        $.get(`/api/match/result/${matchId}`)
-          .done(function (data) {
-            console.log("✅ Dados recebidos:", data);
-            renderResults(data);
-            // Switch to results tab
-            document.querySelector('[data-bs-target="#tabResults"]').click();
-          })
-          .fail(function (xhr) {
-            console.error("❌ Erro ao carregar resultado:", xhr);
-            const error = xhr.responseJSON?.error || "Não foi possível carregar os resultados.";
-            showToast("Erro", error, "error");
-          });
-      }
-
-      function renderResults(data) {
-        const container = document.getElementById("resultsContainer");
-
-        const match = data.match;
-        const matchName = `${match.home_team_name} vs ${match.away_team_name}`;
-
-        let html = `
-                <div class="result-card highlight">
-                    <div class="row align-items-center">
-                        <div class="col-md-6">
-                            <h4 class="mb-2">⚽ ${matchName}</h4>
-                            <p class="text-secondary mb-0">
-                                ${
-                                  match.status === 'finished'
-                                    ? `Placar: ${match.home_score} x ${match.away_score}`
-                                    : match.status === 'inprogress'
-                                    ? `Ao Vivo: ${match.home_score} x ${match.away_score}`
-                                    : "Aguardando Início"
-                                }
-                            </p>
-                        </div>
-                        <div class="col-md-6 text-md-end">
-                            ${renderMLPrediction(data.ml_prediction)}
-                        </div>
-                    </div>
-                    
-                    ${(match.status === 'finished' || match.status === 'inprogress') && data.stats ? `
-                    <hr class="my-3" style="border-color: rgba(255,255,255,0.1);">
-                    
-                    <!-- Posse de Bola -->
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between text-secondary small mb-1">
-                            <span>${data.stats.possession_home || 0}%</span>
-                            <span>Posse de Bola</span>
-                            <span>${data.stats.possession_away || 0}%</span>
-                        </div>
-                        <div class="progress" style="height: 6px; background-color: #2d3035;">
-                            <div class="progress-bar bg-primary" role="progressbar" style="width: ${data.stats.possession_home || 0}%"></div>
-                            <div class="progress-bar bg-info" role="progressbar" style="width: ${data.stats.possession_away || 0}%"></div>
-                        </div>
-                    </div>
-
-                    <!-- Grid de Estatísticas -->
-                    <div class="row text-center g-3" style="font-size: 0.9rem;">
-                        <!-- Escanteios -->
-                        <div class="col-3">
-                            <small class="text-secondary d-block mb-1">Escanteios</small>
-                            <div class="d-flex justify-content-center align-items-center gap-2">
-                                <span class="fw-bold text-primary">${data.stats.corners_home_ft || 0}</span>
-                                <span class="text-white small">vs</span>
-                                <span class="fw-bold text-info">${data.stats.corners_away_ft || 0}</span>
-                            </div>
-                        </div>
-                        
-                        <!-- Chutes Totais -->
-                        <div class="col-3">
-                            <small class="text-secondary d-block mb-1">Chutes</small>
-                            <div class="d-flex justify-content-center align-items-center gap-2">
-                                <span class="fw-bold text-primary">${data.stats.total_shots_home || 0}</span>
-                                <span class="text-white small">vs</span>
-                                <span class="fw-bold text-info">${data.stats.total_shots_away || 0}</span>
-                            </div>
-                        </div>
-
-                        <!-- Chutes no Gol -->
-                        <div class="col-3">
-                            <small class="text-secondary d-block mb-1">No Gol</small>
-                            <div class="d-flex justify-content-center align-items-center gap-2">
-                                <span class="fw-bold text-primary">${data.stats.shots_ot_home_ft || 0}</span>
-                                <span class="text-white small">vs</span>
-                                <span class="fw-bold text-info">${data.stats.shots_ot_away_ft || 0}</span>
-                            </div>
-                        </div>
-                        
-                        <!-- Faltas -->
-                        <div class="col-3">
-                            <small class="text-secondary d-block mb-1">Faltas</small>
-                            <div class="d-flex justify-content-center align-items-center gap-2">
-                                <span class="fw-bold text-primary">${data.stats.fouls_home || 0}</span>
-                                <span class="text-white small">vs</span>
-                                <span class="fw-bold text-info">${data.stats.fouls_away || 0}</span>
+                                <div class="col-md-3">
+                                    <button class="btn btn-primary w-100 btn-custom" onclick="startScanner()" id="btnStartScanner">
+                                        <i class="bi bi-rocket-takeoff me-2"></i>Executar
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- Grid de Estatísticas Adicionais -->
-                    <div class="row text-center g-3 mt-2" style="font-size: 0.9rem;">
-                        <!-- Big Chances -->
-                        <div class="col-6">
-                            <small class="text-secondary d-block mb-1">Big Chances 🎯</small>
-                            <div class="d-flex justify-content-center align-items-center gap-2">
-                                <span class="fw-bold text-primary">${data.stats.big_chances_home || 0}</span>
-                                <span class="text-white small">vs</span>
-                                <span class="fw-bold text-info">${data.stats.big_chances_away || 0}</span>
-                            </div>
-                        </div>
-                        
-                        <!-- xG (Expected Goals) -->
-                        <div class="col-6">
-                            <small class="text-secondary d-block mb-1">xG (Expected Goals)</small>
-                            <div class="d-flex justify-content-center align-items-center gap-2">
-                                <span class="fw-bold text-primary">${data.stats.expected_goals_home ? data.stats.expected_goals_home.toFixed(2) : '0.00'}</span>
-                                <span class="text-white small">vs</span>
-                                <span class="fw-bold text-info">${data.stats.expected_goals_away ? data.stats.expected_goals_away.toFixed(2) : '0.00'}</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Grid de Estatísticas Secundárias (Level 2) -->
-                    <div class="row text-center g-3 mt-1" style="font-size: 0.9rem;">
-                        <!-- Cartões Amarelos -->
-                        <div class="col-6">
-                            <small class="text-secondary d-block mb-1">Cartões Amarelos 🟨</small>
-                            <div class="d-flex justify-content-center align-items-center gap-2">
-                                <span class="fw-bold text-primary">${data.stats.yellow_cards_home || 0}</span>
-                                <span class="text-white small">vs</span>
-                                <span class="fw-bold text-info">${data.stats.yellow_cards_away || 0}</span>
-                            </div>
-                        </div>
 
-                        <!-- Cartões Vermelhos -->
-                        <div class="col-6">
-                            <small class="text-secondary d-block mb-1">Cartões Vermelhos 🟥</small>
-                            <div class="d-flex justify-content-center align-items-center gap-2">
-                                <span class="fw-bold text-primary">${data.stats.red_cards_home || 0}</span>
-                                <span class="text-white small">vs</span>
-                                <span class="fw-bold text-info">${data.stats.red_cards_away || 0}</span>
+                    <div class="col-12" id="scannerResultsArea" style="display:none;">
+                        <div class="d-flex justify-content-between align-items-center mb-3 border-start border-4 border-primary ps-3">
+                            <h5 class="text-white mb-0">Oportunidades Encontradas</h5>
+                            <span class="badge bg-dark border border-secondary" id="lastUpdateTag">Atualizado: --:--</span>
+                        </div>
+                        <div class="row g-3" id="scannerCardsContainer">
+                            </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="pills-analysis">
+                <div class="row justify-content-center">
+                    <div class="col-md-8 col-lg-6">
+                        <div class="input-group input-group-lg mb-5">
+                            <input type="text" class="form-control form-control-dark" id="matchUrl" placeholder="Cole a URL ou ID do SofaScore...">
+                            <button class="btn btn-primary" onclick="analyzeMatch()">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="analysisResult" style="display: none;">
+                    <div class="match-hero text-center rounded-3">
+                        <span class="badge bg-secondary mb-3" id="metaTournament">Tournament Name</span>
+                        <div class="d-flex justify-content-center align-items-center gap-4 mb-2">
+                            <div class="text-end" style="flex:1;">
+                                <h3 class="fw-bold mb-0" id="metaHome">Home Team</h3>
+                            </div>
+                            <div class="score-board bg-dark px-3 py-1 rounded border border-secondary" id="metaScore">
+                                0 - 0
+                            </div>
+                            <div class="text-start" style="flex:1;">
+                                <h3 class="fw-bold mb-0" id="metaAway">Away Team</h3>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <span class="badge bg-dark border border-secondary" id="metaStatus">Not Started</span>
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-4">
+                            <div class="glass-panel p-4 text-center h-100">
+                                <h6 class="text-muted text-uppercase small mb-3">Previsão IA (ML V2)</h6>
+                                <div class="prediction-badge" id="mlPredictionValue">-</div>
+                                <div class="text-muted small mt-2" id="mlPredictionLabel">Escanteios Totais</div>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="glass-panel p-4 h-100">
+                                <h6 class="text-muted text-uppercase small mb-3">Top Opportunities</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-sm table-borderless align-middle mb-0">
+                                        <tbody id="top7Table">
+                                            </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    ` : ''}
-                    
-                    <div class="text-center mt-4">
-                        <button class="btn btn-outline-light btn-sm" onclick="updateSingleMatch('${match.match_id}')">
-                            <i class="bi bi-arrow-clockwise me-1"></i> Atualizar Dados
+
+                    <!-- AI Suggestions Section -->
+                    <div class="glass-panel p-4 mb-4">
+                        <h6 class="text-muted text-uppercase small mb-4">Sugestões da IA</h6>
+                        <div class="row g-3" id="suggestionsContainer">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-4 mb-4">
+                        <h6 class="text-muted text-uppercase small mb-4">Estatísticas Comparativas</h6>
+                        <div id="statsVisuals">
+                            </div>
+                    </div>
+
+                    <div class="text-center pb-5">
+                        <button class="btn btn-outline-light btn-sm" onclick="updateCurrentMatch()">
+                            <i class="bi bi-arrow-repeat me-1"></i> Atualizar Dados Reais
                         </button>
                     </div>
                 </div>
-            `;
+            </div>
 
-        // Top 7 Opportunities
-        if (data.top7 && data.top7.length > 0) {
-          html += `
-                    <div class="result-card">
-                        <h5 class="mb-3"><i class="bi bi-trophy me-2 text-warning"></i>Top 7 Oportunidades</h5>
-                        <div class="table-responsive">
-                            <table class="table table-hover mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Mercado</th>
-                                        <th>Linha</th>
-                                        <th>Prob.</th>
-                                        <th>Odd Justa</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                `;
+            <div class="tab-pane fade" id="pills-history">
+                <div class="glass-panel p-0 overflow-hidden">
+                    <table class="table table-dark table-hover mb-0">
+                        <thead class="bg-black">
+                            <tr>
+                                <th class="p-3">Data/Hora</th>
+                                <th class="p-3">Partida</th>
+                                <th class="p-3">Previsão</th>
+                                <th class="p-3 text-end">Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
 
-          data.top7.forEach((pick) => {
-            const isOver = pick.market.includes("Over");
-            const badgeClass = isOver ? "badge-over" : "badge-under";
-            const icon = isOver ? "▲" : "▼";
-
-            let statusBadge = "";
-            if (pick.status === "GREEN") {
-              statusBadge = '<span class="badge badge-over">✓ GREEN</span>';
-            } else if (pick.status === "RED") {
-              statusBadge = '<span class="badge badge-hard">✗ RED</span>';
-            } else {
-              statusBadge = '<span class="badge badge-neutral">Pendente</span>';
-            }
-
-            html += `
-                        <tr>
-                            <td>${pick.market_group || "-"}</td>
-                            <td><span class="badge ${badgeClass}">${icon} ${
-              pick.market
-            }</span></td>
-                            <td><strong>${(pick.probability * 100).toFixed(
-                              1
-                            )}%</strong></td>
-                            <td>@${pick.odds.toFixed(2)}</td>
-                            <td>${statusBadge}</td>
-                        </tr>
-                    `;
-          });
-
-          html += `
-                                </tbody>
-                            </table>
+            <div class="tab-pane fade" id="pills-stats">
+                <div class="row g-4">
+                    <!-- ML Performance Metrics -->
+                    <div class="col-12">
+                        <h5 class="text-muted mb-3"><i class="bi bi-cpu-fill me-2"></i>Desempenho do Modelo ML</h5>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="glass-panel p-4 text-center">
+                            <div class="text-muted small mb-2">MAE (Erro Médio)</div>
+                            <div class="display-6 fw-bold text-success" id="statMAE">-</div>
+                            <div class="small text-muted mt-2">escanteios</div>
                         </div>
                     </div>
-                `;
+                    
+                    <div class="col-md-3">
+                        <div class="glass-panel p-4 text-center">
+                            <div class="text-muted small mb-2">RMSE</div>
+                            <div class="display-6 fw-bold text-info" id="statRMSE">-</div>
+                            <div class="small text-muted mt-2">desvio padrão</div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="glass-panel p-4 text-center">
+                            <div class="text-muted small mb-2">📈 Win Rate</div>
+                            <div class="display-6 fw-bold text-warning" id="statWinRate">-</div>
+                            <div class="small text-muted mt-2">taxa de acerto</div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="glass-panel p-4 text-center">
+                            <div class="text-muted small mb-2">💵 ROI</div>
+                            <div class="display-6 fw-bold text-primary" id="statROI">-</div>
+                            <div class="small text-muted mt-2" id="statROIUnits">-</div>
+                        </div>
+                    </div>
+
+                    <!-- Database Stats -->
+                    <div class="col-12 mt-4">
+                        <h5 class="text-muted mb-3"><i class="bi bi-database-fill me-2"></i>Banco de Dados</h5>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="glass-panel p-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-muted small">Total de Jogos</div>
+                                    <div class="h3 mb-0 fw-bold" id="statTotalMatches">-</div>
+                                </div>
+                                <i class="bi bi-trophy-fill text-primary" style="font-size: 2.5rem; opacity: 0.3;"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="glass-panel p-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-muted small">Total de Previsões</div>
+                                    <div class="h3 mb-0 fw-bold" id="statTotalPredictions">-</div>
+                                </div>
+                                <i class="bi bi-graph-up-arrow text-success" style="font-size: 2.5rem; opacity: 0.3;"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Predictions by Status -->
+                    <div class="col-12 mt-4">
+                        <h5 class="text-muted mb-3"><i class="bi bi-pie-chart-fill me-2"></i>Distribuição de Resultados</h5>
+                    </div>
+                    
+                    <div class="col-12">
+                        <div class="glass-panel p-4">
+                            <div class="row g-3" id="statsPredictionsByStatus">
+                                <!-- Will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="console-drawer" id="consoleDrawer">
+        <div class="console-header" onclick="toggleConsole()">
+            <span><i class="bi bi-terminal-fill me-2"></i>TERMINAL SYSTEM LOGS</span>
+            <div>
+                <span class="badge bg-dark border border-secondary me-2" id="lastLogPreview">Pronto.</span>
+                <i class="bi bi-chevron-up" id="consoleIcon"></i>
+            </div>
+        </div>
+        <div class="console-body" id="terminalOutput">
+            <div class="log-entry"><span class="log-info">System initialized...</span></div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="configModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content glass-panel">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Configurações</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <button class="btn btn-outline-warning w-100 mb-2" onclick="updateDatabase()">Atualizar Base de Dados</button>
+                        <button class="btn btn-outline-success w-100" onclick="trainModel()">Retreinar Modelo IA</button>
+                    </div>
+                    <hr class="border-secondary">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="headlessMode" checked onchange="saveConfig()">
+                        <label class="form-check-label">Modo Headless (Navegador Oculto)</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // ==========================================
+        // UI INTERACTION LOGIC
+        // ==========================================
+        let currentMatchId = null;
+        let isConsoleExpanded = false;
+        let vigilanteInterval = null;
+
+        function toggleConsole() {
+            const drawer = document.getElementById('consoleDrawer');
+            const icon = document.getElementById('consoleIcon');
+            isConsoleExpanded = !isConsoleExpanded;
+            
+            if(isConsoleExpanded) {
+                drawer.classList.add('expanded');
+                icon.className = 'bi bi-chevron-down';
+            } else {
+                drawer.classList.remove('expanded');
+                icon.className = 'bi bi-chevron-up';
+            }
         }
 
-        // Suggestions
-        if (data.suggestions && data.suggestions.length > 0) {
-          html += `
-                    <div class="result-card">
-                        <h5 class="mb-3"><i class="bi bi-lightbulb me-2 text-warning"></i>Sugestões da IA</h5>
-                        <div class="row g-3">
-                `;
+        // --- Status Management ---
+        function setSystemStatus(isBusy, text, isVigilante = false) {
+            const dot = document.getElementById('statusDot');
+            const txt = document.getElementById('statusText');
 
-          data.suggestions.forEach((sugg) => {
-            const level = sugg.category.split("_")[1];
-            const badgeClass =
-              level === "Easy"
-                ? "badge-easy"
-                : level === "Medium"
-                ? "badge-medium"
-                : "badge-hard";
+            if(isVigilante) {
+                dot.className = 'status-dot vigilante';
+                txt.textContent = text || 'Modo Vigilante Ativo';
+                txt.classList.add('text-warning');
+            } else if(isBusy) {
+                dot.className = 'status-dot active';
+                txt.textContent = text || 'Processando...';
+                txt.classList.add('text-primary');
+                txt.classList.remove('text-warning');
+            } else {
+                dot.className = 'status-dot';
+                txt.textContent = 'Pronto';
+                txt.className = '';
+            }
+        }
 
-            let statusBadge = "";
-            if (sugg.status === "GREEN") {
-              statusBadge =
-                '<span class="badge badge-over ms-1">✓ GREEN</span>';
-            } else if (sugg.status === "RED") {
-              statusBadge = '<span class="badge badge-hard ms-1">✗ RED</span>';
+        // ==========================================
+        // VIGILANTE MODE
+        // ==========================================
+        function toggleVigilante() {
+            const isActive = document.getElementById('vigilanteToggle').checked;
+            
+            if(isActive) {
+                console.log("👮 Vigilante iniciado.");
+                setSystemStatus(true, "Vigilante Iniciando...", true);
+                
+                // Primeira execução imediata
+                fetchScannerUpdate(true);
+                
+                // Define intervalo para 60 segundos
+                vigilanteInterval = setInterval(() => {
+                    fetchScannerUpdate(true);
+                }, 60000); 
+            } else {
+                console.log("👮 Vigilante parado.");
+                clearInterval(vigilanteInterval);
+                setSystemStatus(false);
+            }
+        }
+
+        function fetchScannerUpdate(silent = false) {
+            if(!silent) setSystemStatus(true, "Atualizando...");
+            
+            const dateMode = document.querySelector('input[name="scannerDate"]:checked').value;
+            const leaguesMode = document.getElementById('scannerLeagues').value;
+            
+            $.ajax({
+                url: '/api/scanner/start',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ date_mode: dateMode, leagues_mode: leaguesMode })
+            }).done(() => {
+                const check = setInterval(() => {
+                    $.get("/api/status").done(s => {
+                        if(!s.is_running) {
+                            clearInterval(check);
+                            loadScannerResults();
+                            if(document.getElementById('vigilanteToggle').checked) {
+                                setSystemStatus(true, "Vigilante: Monitorando", true);
+                            }
+                        }
+                    });
+                }, 2000);
+            });
+        }
+
+        // ==========================================
+        // DATA VISUALIZATION HELPERS
+        // ==========================================
+        function createStatBar(label, homeVal, awayVal, total = 0) {
+            const max = total || (homeVal + awayVal) || 1; 
+            const hPct = (homeVal / max) * 100;
+            const aPct = (awayVal / max) * 100;
+
+            return `
+                <div class="row align-items-center mb-2" style="font-size: 0.85rem;">
+                    <div class="col-2 text-end text-muted">${homeVal}</div>
+                    <div class="col-8">
+                        <div class="d-flex justify-content-center text-muted small mb-1">${label}</div>
+                        <div class="stat-bar-container">
+                            <div class="stat-bar-bg">
+                                <div class="stat-bar-fill-home" style="width: ${hPct}%"></div>
+                                <div style="flex-grow:1; background: transparent;"></div>
+                                <div class="stat-bar-fill-away" style="width: ${aPct}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-2 text-start text-muted">${awayVal}</div>
+                </div>
+            `;
+        }
+
+        // ==========================================
+        // API COMMUNICATION & LOGIC
+        // ==========================================
+        
+        // 1. SSE Logs
+        const eventSource = new EventSource("/api/logs/stream");
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if(data.type === 'heartbeat') return;
+            
+            const term = document.getElementById('terminalOutput');
+            const preview = document.getElementById('lastLogPreview');
+            
+            const line = document.createElement('div');
+            line.className = 'log-entry mb-1';
+            line.innerHTML = `<span class="text-secondary small me-2">[${data.timestamp}]</span><span class="log-${data.type}">${data.message}</span>`;
+            
+            term.appendChild(line);
+            term.scrollTop = term.scrollHeight;
+            preview.textContent = data.message.substring(0, 50) + "...";
+
+            // Status Logic: Evita conflito visual com o Vigilante
+            if(!document.getElementById('vigilanteToggle').checked) {
+                if(data.message.includes("Iniciando")) setSystemStatus(true, data.message);
+                if(data.message.includes("Concluído") || data.message.includes("Sucesso")) setSystemStatus(false);
+            }
+        };
+
+        // 2. Analyze Match
+        function analyzeMatch() {
+            const url = document.getElementById('matchUrl').value;
+            if(!url) return alert("Insira uma URL!");
+
+            const tab = new bootstrap.Tab(document.querySelector('#mainTab button[data-bs-target="#pills-analysis"]'));
+            tab.show();
+
+            document.getElementById('analysisResult').style.display = 'none';
+            setSystemStatus(true, "Analisando Partida...");
+
+            $.ajax({
+                url: "/api/match/analyze",
+                method: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ url: url })
+            }).done(function(resp) {
+                currentMatchId = resp.match_id;
+                pollStatus();
+            });
+        }
+
+        // 3. Poll Status & Render (General)
+        function pollStatus() {
+            const interval = setInterval(() => {
+                $.get("/api/status").done(function(status) {
+                    if(!status.is_running) {
+                        clearInterval(interval);
+                        setSystemStatus(false);
+                        if(currentMatchId) loadMatchResult(currentMatchId);
+                        loadHistory();
+                    }
+                });
+            }, 1000);
+        }
+
+        function loadMatchResult(id) {
+            $.get(`/api/match/result/${id}`).done(function(data) {
+                renderAnalysis(data);
+            });
+        }
+
+        // 4. Update Current Match (Real-time data fetch)
+        function updateCurrentMatch() {
+            if(!currentMatchId) return; 
+            
+            const btn = document.querySelector('button[onclick="updateCurrentMatch()"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Atualizando...';
+            btn.disabled = true;
+
+            $.ajax({
+                url: '/api/database/update_match',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ url: currentMatchId.toString() })
+            })
+            .done(function() {
+                loadMatchResult(currentMatchId);
+            })
+            .always(function() {
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 1000);
+            });
+        }
+
+        function renderAnalysis(data) {
+            const m = data.match;
+            const stats = data.stats || {};
+            
+            $('#metaTournament').text(m.tournament);
+            $('#metaHome').text(m.home_team_name);
+            $('#metaAway').text(m.away_team_name);
+            $('#metaScore').text(m.status === 'finished' || m.status === 'inprogress' ? `${m.home_score} - ${m.away_score}` : "VS");
+            $('#metaStatus').text(m.status);
+            
+            const mlVal = data.ml_prediction ? data.ml_prediction.toFixed(1) : "-";
+            $('#mlPredictionValue').text(mlVal);
+            
+            const tbody = $('#top7Table');
+            tbody.empty();
+            if(data.top7) {
+                data.top7.forEach(t => {
+                    const color = t.status === 'GREEN' ? 'text-success' : (t.status === 'RED' ? 'text-danger' : 'text-warning');
+                    const icon = t.status === 'GREEN' ? 'check-circle-fill' : 'circle';
+                    tbody.append(`
+                        <tr>
+                            <td><span class="badge bg-dark border border-secondary">${t.market_group}</span></td>
+                            <td class="fw-bold">${t.market}</td>
+                            <td>${(t.probability*100).toFixed(0)}%</td>
+                            <td class="text-end ${color}"><i class="bi bi-${icon}"></i></td>
+                        </tr>
+                    `);
+                });
+
             }
 
-            html += `
+            // Render Suggestions
+            const suggContainer = $('#suggestionsContainer');
+            suggContainer.empty();
+            if(data.suggestions && data.suggestions.length > 0) {
+                // Ordena: Easy -> Medium -> Hard
+                const order = { 'Suggestion_Easy': 1, 'Suggestion_Medium': 2, 'Suggestion_Hard': 3 };
+                data.suggestions.sort((a, b) => (order[a.category] || 99) - (order[b.category] || 99));
+
+                data.suggestions.forEach(s => {
+                    let badgeColor = 'secondary';
+                    let title = 'Sugestão';
+                    if(s.category === 'Suggestion_Easy') { badgeColor = 'success'; title = 'EASY (Segurança)'; }
+                    if(s.category === 'Suggestion_Medium') { badgeColor = 'warning'; title = 'MEDIUM (Equilíbrio)'; }
+                    if(s.category === 'Suggestion_Hard') { badgeColor = 'danger'; title = 'HARD (Ousadia)'; }
+
+                    suggContainer.append(`
                         <div class="col-md-4">
-                            <div class="stat-card">
-                                <div class="mb-2">
-                                    <span class="badge ${badgeClass}">${level.toUpperCase()}</span>
-                                    ${statusBadge}
+                            <div class="p-3 rounded border border-${badgeColor} bg-${badgeColor} bg-opacity-10 h-100">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="badge bg-${badgeColor}">${title}</span>
+                                    <span class="text-${badgeColor} fw-bold">${(s.probability*100).toFixed(0)}%</span>
                                 </div>
-                                <h6>${sugg.market}</h6>
-                                <p class="mb-1 text-secondary">${
-                                  sugg.market_group || "-"
-                                }</p>
-                                <div class="stat-value" style="font-size: 1.5rem;">@${sugg.odds.toFixed(
-                                  2
-                                )}</div>
-                                <small class="text-secondary">${(
-                                  sugg.probability * 100
-                                ).toFixed(1)}% prob.</small>
+                                <div class="text-center my-3">
+                                    <h5 class="mb-0 fw-bold text-white">${s.market}</h5>
+                                    <small class="text-muted">${s.market_group}</small>
+                                </div>
+                                <div class="text-center">
+                                    <span class="badge bg-dark border border-secondary">Odd: ${s.odds.toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `);
+                });
+            } else {
+                suggContainer.html('<div class="col-12 text-center text-muted">Nenhuma sugestão qualificada encontrada.</div>');
+            }
+
+            const visuals = $('#statsVisuals');
+            visuals.empty();
+            if(stats.possession_home) visuals.append(createStatBar("Posse de Bola (%)", stats.possession_home, stats.possession_away, 100));
+            if(stats.corners_home_ft !== undefined) visuals.append(createStatBar("Escanteios", stats.corners_home_ft, stats.corners_away_ft));
+            if(stats.total_shots_home !== undefined) visuals.append(createStatBar("Chutes Totais", stats.total_shots_home, stats.total_shots_away));
+
+            $('#analysisResult').fadeIn();
+        }
+
+        // 5. Scanner Logic
+        function startScanner() {
+            setSystemStatus(true, "Scanner Rodando...");
+            const dateMode = document.querySelector('input[name="scannerDate"]:checked').value;
+            const leaguesMode = document.getElementById('scannerLeagues').value;
+            
+            $.ajax({
+                url: '/api/scanner/start',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ date_mode: dateMode, leagues_mode: leaguesMode })
+            }).done(() => {
+                const check = setInterval(() => {
+                    $.get("/api/status").done(s => {
+                        if(!s.is_running) {
+                            clearInterval(check);
+                            loadScannerResults();
+                        }
+                    });
+                }, 2000);
+            });
+        }
+
+        function loadScannerResults() {
+            $.get('/api/scanner/results').done(res => {
+                const container = $('#scannerCardsContainer');
+                container.empty();
+                $('#scannerResultsArea').show();
+                
+                const now = new Date();
+                $('#lastUpdateTag').text(`Atualizado: ${now.toLocaleTimeString()}`);
+
+                if(res.length === 0) {
+                    container.html('<div class="text-muted text-center py-5">Nenhuma oportunidade encontrada.</div>');
+                    return;
+                }
+
+                res.forEach(item => {
+                    const confColor = item.confidence > 80 ? 'success' : 'primary';
+                    const card = `
+                        <div class="col-md-4">
+                            <div class="glass-panel p-3 h-100 position-relative border-top border-4 border-${confColor}">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="badge bg-dark text-muted">${item.start_time.split(' ')[1]}</span>
+                                    <span class="badge bg-${confColor} bg-opacity-10 text-${confColor} border border-${confColor}">${item.confidence}% Confiança</span>
+                                </div>
+                                <h6 class="mb-3" style="font-size: 0.95rem;">${item.match_name}</h6>
+                                <div class="d-flex justify-content-between align-items-end">
+                                    <div>
+                                        <small class="text-muted d-block">IA Sugere</small>
+                                        <span class="fw-bold text-white fs-5">${item.best_bet}</span>
+                                    </div>
+                                    <div class="text-end">
+                                        <small class="text-muted d-block">ML Pred</small>
+                                        <span class="fw-bold text-primary">${item.ml_prediction}</span>
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary w-100 mt-3" onclick="analyzeFromScanner('${item.match_id}')">Ver Detalhes</button>
                             </div>
                         </div>
                     `;
-          });
-
-          html += `
-                        </div>
-                    </div>
-                `;
+                    container.append(card);
+                });
+            });
         }
 
-        container.innerHTML = html;
-      }
+        function analyzeFromScanner(matchId) {
+             const tab = new bootstrap.Tab(document.querySelector('#mainTab button[data-bs-target="#pills-analysis"]'));
+             tab.show();
+             currentMatchId = matchId;
+             loadMatchResult(matchId);
+        }
 
-      // ============================================================
-      // History
-      // ============================================================
-      function loadHistory() {
-        $.get("/api/analyses").done(function (analyses) {
-          const tbody = document.getElementById("historyTable");
+        // 6. History Logic
+        function loadHistory() {
+             $.get("/api/analyses").done(list => {
+                 // ORDENAÇÃO: Mais recentes primeiro (Timestamp Decrescente)
+                 list.sort((a, b) => b.start_timestamp - a.start_timestamp);
 
-          if (analyses.length === 0) {
-            tbody.innerHTML = `
-                            <tr>
-                                <td colspan="5" class="text-center text-secondary py-4">
-                                    Nenhuma análise encontrada.
-                                </td>
-                            </tr>
-                        `;
-            return;
-          }
+                 const tbody = $('#historyTableBody');
+                 tbody.empty();
+                 list.forEach(i => {
+                     // Formatação correta de data e hora
+                     const dateObj = new Date(i.start_timestamp * 1000);
+                     const dateStr = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                     const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-          let html = "";
-          analyses.forEach((a) => {
-            const matchName = `${a.home_team_name} vs ${a.away_team_name}`;
-            let score = "-";
-            
-      if (a.status === 'finished') {
-          score = a.home_score !== null ? `${a.home_score} x ${a.away_score}` : "-";
-      } else if (a.status === 'inprogress') {
-          score = '<span class="badge bg-warning text-dark">⚽ Ao Vivo</span>';
-      } else if (a.status === 'notstarted') {
-          score = '<span class="badge bg-secondary">📅 Agendado</span>';
-      } else {
-          score = '<span class="badge bg-info text-dark">⏸️ ' + a.status + '</span>';
-      }      
-            
-            const mlPred = a.ml_prediction ? a.ml_prediction.toFixed(1) : "-";
+                     tbody.append(`
+                        <tr>
+                            <td class="text-muted small">${dateStr} ${timeStr}</td>
+                            <td>${i.home_team_name} vs ${i.away_team_name}</td>
+                            <td><span class="badge bg-primary bg-opacity-10 text-primary">${i.ml_prediction ? i.ml_prediction.toFixed(1) : '-'}</span></td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-dark border-secondary" onclick="analyzeFromScanner('${i.match_id}')"><i class="bi bi-eye"></i></button>
+                            </td>
+                        </tr>
+                     `);
+                 });
+             });
+        }
+        
+        // 7. Modal Functions Wrappers
+        function updateDatabase() {
+            setSystemStatus(true, "Atualizando Banco...");
+            $.ajax({
+                url: "/api/database/update",
+                method: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ league_name: 'Brasileirão Série A' }) 
+            }).done(() => pollStatus());
+        }
 
-            html += `
-                            <tr>
-                                <td>
-                                    <strong>${matchName}</strong>
-                                    <br><small class="text-secondary">ID: ${a.match_id}</small>
-                                </td>
-                                <td>${score}</td>
-                                <td><span class="badge bg-primary">${mlPred}</span></td>
-                                <td>${a.num_predictions} previsões</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="loadMatchResult('${a.match_id}')">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        `;
-          });
+        function trainModel() {
+            setSystemStatus(true, "Treinando ML...");
+            $.ajax({
+                url: "/api/model/train",
+                method: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ mode: 'standard' })
+            }).done(() => pollStatus());
+        }
 
-          tbody.innerHTML = html;
-        });
-      }
+        function saveConfig() {
+            // Placeholder: Apenas para o switch não dar erro
+            console.log("Config saved.");
+        }
 
-      // ============================================================
-      // Stats
-      // ============================================================
-      function loadStats() {
-        $.get("/api/stats").done(function (stats) {
-          document.getElementById("statMatches").textContent =
-            stats.total_matches || 0;
-          document.getElementById("statPredictions").textContent =
-            stats.total_predictions || 0;
-          document.getElementById("statAccuracy").textContent = stats.accuracy
-            ? stats.accuracy.toFixed(1) + "%"
-            : "-";
-        });
-      }
-
-      // ============================================================
-      // Config
-      // ============================================================
-      function loadConfig() {
-        $.get("/api/config").done(function (config) {
-          document.getElementById("configHeadless").checked = config.headless;
-          document.getElementById("configModelType").value = config.model_type;
-          document.getElementById("configImprovedModel").checked =
-            config.use_improved_model;
-          document.getElementById("configSimulations").value =
-            config.num_simulations;
-          document.getElementById("configHistoryGames").value =
-            config.history_games;
-          document.getElementById("configConfidence").value =
-            config.confidence_threshold;
-          document.getElementById("confidenceValue").textContent =
-            Math.round(config.confidence_threshold * 100) + "%";
-          document.getElementById("configLiveUpdateInterval").value =
-            config.live_update_interval || 5;
-        });
-      }
-
-      function saveConfig() {
-        const config = {
-          headless: document.getElementById("configHeadless").checked,
-          model_type: document.getElementById("configModelType").value,
-          use_improved_model: document.getElementById("configImprovedModel")
-            .checked,
-          num_simulations: parseInt(
-            document.getElementById("configSimulations").value
-          ),
-          history_games: parseInt(
-            document.getElementById("configHistoryGames").value
-          ),
-          confidence_threshold: parseFloat(
-            document.getElementById("configConfidence").value
-          ),
-          live_update_interval: parseInt(
-            document.getElementById("configLiveUpdateInterval").value
-          ),
-        };
-
-        $.ajax({
-          url: "/api/config",
-          method: "POST",
-          contentType: "application/json",
-          data: JSON.stringify(config),
-        })
-          .done(function () {
-            showToast("Sucesso", "Configurações salvas!", "success");
-            bootstrap.Modal.getInstance(
-              document.getElementById("configModal")
-            ).hide();
-            // Restart live update loop with new interval
-            startLiveUpdateLoop();
-          })
-          .fail(function () {
-            showToast(
-              "Erro",
-              "Não foi possível salvar as configurações.",
-              "error"
-            );
-          });
-      }
-
-      function loadLeagues() {
-          $.get('/api/leagues')
-            .done(function(leagues) {
-              const select = document.getElementById('leagueSelect');
-              if(leagues && leagues.length > 0) {
-                  select.innerHTML = '';
-                  leagues.forEach(l => {
-                      const option = document.createElement('option');
-                      // JSON uses 'torneio' for league name
-                      const name = l.torneio || l.nome || "Liga Desconhecida";
-                      option.value = name;
-                      option.textContent = name;
-                      if(name === 'Brasileirão Série A') option.selected = true;
-                      select.appendChild(option);
-                  });
-              } else {
-                  console.warn("Nenhuma liga encontrada na API.");
-              }
-            })
-            .fail(function(xhr) {
-                console.error("Erro ao carregar ligas:", xhr);
-                showToast("Erro", "Falha ao carregar lista de ligas.", "error");
+        // 8. Load Statistics
+        function loadStatistics() {
+            $.get("/api/stats").done(stats => {
+                // ML Performance Metrics
+                $('#statMAE').text(stats.mae ? stats.mae.toFixed(2) : '-');
+                $('#statRMSE').text(stats.rmse ? stats.rmse.toFixed(2) : '-');
+                $('#statWinRate').text(stats.accuracy ? stats.accuracy.toFixed(1) + '%' : '-');
+                
+                // ROI
+                if (stats.roi !== undefined && stats.roi !== null) {
+                    const roiSign = stats.roi >= 0 ? '+' : '';
+                    const roiColor = stats.roi >= 0 ? 'text-success' : 'text-danger';
+                    $('#statROI').text(roiSign + stats.roi.toFixed(1) + '%').removeClass('text-primary text-success text-danger').addClass(roiColor);
+                    $('#statROIUnits').text(roiSign + stats.roi_units.toFixed(1) + ' unidades');
+                } else {
+                    $('#statROI').text('-');
+                    $('#statROIUnits').text('-');
+                }
+                
+                // Database Stats
+                $('#statTotalMatches').text(stats.total_matches || 0);
+                $('#statTotalPredictions').text(stats.total_predictions || 0);
+                
+                // Predictions by Status
+                const statusContainer = $('#statsPredictionsByStatus');
+                statusContainer.empty();
+                if (stats.predictions_by_status && stats.predictions_by_status.length > 0) {
+                    stats.predictions_by_status.forEach(s => {
+                        const color = s.status === 'GREEN' ? 'success' : (s.status === 'RED' ? 'danger' : 'warning');
+                        const icon = s.status === 'GREEN' ? 'check-circle-fill' : (s.status === 'RED' ? 'x-circle-fill' : 'clock-fill');
+                        statusContainer.append(`
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center justify-content-between p-3 border border-${color} rounded bg-${color} bg-opacity-10">
+                                    <div>
+                                        <i class="bi bi-${icon} text-${color} me-2"></i>
+                                        <span class="text-${color} fw-bold">${s.status}</span>
+                                    </div>
+                                    <span class="badge bg-${color}">${s.count}</span>
+                                </div>
+                            </div>
+                        `);
+                    });
+                } else {
+                    statusContainer.html('<div class="col-12 text-center text-muted">Nenhum dado disponível</div>');
+                }
             });
-      }
+        }
 
-      // Update confidence display
-      document
-        .getElementById("configConfidence")
-        .addEventListener("input", function () {
-          document.getElementById("confidenceValue").textContent =
-            Math.round(this.value * 100) + "%";
+        // Load on start
+        $(document).ready(() => {
+            loadHistory();
+            
+            // Load statistics when tab is shown
+            $('button[data-bs-target="#pills-stats"]').on('shown.bs.tab', function () {
+                loadStatistics();
+            });
         });
 
-      // ============================================================
-      // Scanner Logic
-      // ============================================================
-      async function startScanner() {
-          if (isRunning) return;
-          setStatus(true, "Iniciando scanner...");
-
-          const dateMode = document.querySelector('input[name="scannerDate"]:checked').value;
-          const leaguesMode = document.getElementById('scannerLeagues').value;
-          
-          try {
-              const response = await fetch('/api/scanner/start', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      date_mode: dateMode,
-                      leagues_mode: leaguesMode
-                  })
-              });
-              
-              const data = await response.json();
-              if (data.error) {
-                  showToast('Erro', data.error, 'error');
-                  setStatus(false);
-              } else {
-                  showToast("Scanner iniciado", "Verificando jogos...", "info");
-                  pollStatus(); // Use existing pollStatus to monitor
-                  // The scanner results will be loaded once pollStatus detects is_running is false
-              }
-          } catch (error) {
-              console.error('Erro ao iniciar scanner:', error);
-              showToast('Erro', 'Erro ao conectar com o servidor.', 'error');
-              setStatus(false);
-          }
-      }
-
-      // Modified pollStatus to also check for scanner completion
-      const originalPollStatus = pollStatus;
-      pollStatus = function() {
-          const poll = setInterval(function () {
-              $.get("/api/status").done(function (status) {
-                  if (!status.is_running) {
-                      clearInterval(poll);
-                      setStatus(false);
-
-                      // Load results if we just analyzed a match
-                      if (currentMatchId) {
-                          loadMatchResult(currentMatchId);
-                          currentMatchId = null;
-                      }
-                      
-                      // Check if scanner results need to be loaded
-                      if (status.last_task_type === 'scanner' && status.progress === 100) {
-                          loadScannerResults();
-                      }
-
-                      // Refresh stats and history
-                      loadStats();
-                      loadHistory();
-                  }
-              });
-          }, 1000);
-      };
-
-      async function loadScannerResults() {
-          try {
-              const response = await fetch('/api/scanner/results');
-              const results = await response.json();
-              
-              const container = document.getElementById('scannerResults');
-              const tbody = document.getElementById('scannerTableBody');
-              tbody.innerHTML = '';
-              
-              if (results.length === 0) {
-                  container.style.display = 'none';
-                  showToast("Scanner", "Nenhuma oportunidade encontrada para os critérios selecionados.", "info");
-                  return;
-              }
-              
-              results.forEach(item => {
-                  const row = `
-                      <tr>
-                          <td>${item.start_time.split(' ')[1]}</td>
-                          <td>${item.match_name}</td>
-                          <td><span class="badge bg-secondary">${item.tournament}</span></td>
-                          <td><strong>${item.ml_prediction}</strong></td>
-                          <td><span class="badge bg-success">${item.best_bet}</span></td>
-                          <td>
-                              <div class="progress" style="height: 20px;">
-                                  <div class="progress-bar bg-info" role="progressbar" 
-                                       style="width: ${item.confidence}%">
-                                      ${item.confidence}%
-                                  </div>
-                              </div>
-                          </td>
-                      </tr>
-                  `;
-                  tbody.innerHTML += row;
-              });
-              
-              container.style.display = 'block';
-              showToast("Scanner", `Encontradas ${results.length} oportunidades!`, "success");
-              
-          } catch (error) {
-              console.error('Erro ao carregar resultados do scanner:', error);
-              showToast('Erro', 'Falha ao carregar resultados do scanner.', 'error');
-          }
-      }
-
-      // ============================================================
-      // Toast
-      // ============================================================
-      function showToast(title, message, type) {
-        const toast = document.getElementById("toast");
-        const toastTitle = document.getElementById("toastTitle");
-        const toastBody = document.getElementById("toastBody");
-        const toastIcon = document.getElementById("toastIcon");
-
-        toastTitle.textContent = title;
-        toastBody.textContent = message;
-
-        const icons = {
-          success: "bi-check-circle text-success",
-          error: "bi-x-circle text-danger",
-          warning: "bi-exclamation-triangle text-warning",
-          info: "bi-info-circle text-primary",
-        };
-
-        toastIcon.className = "bi me-2 " + (icons[type] || icons.info);
-
-        const bsToast = new bootstrap.Toast(toast);
-        bsToast.show();
-      }
-
-      // ============================================================
-      // Init
-      // ============================================================
-      $(document).ready(function () {
-        connectSSE();
-        loadStats();
-        loadHistory();
-        loadConfig();
-        loadLeagues();
-
-        // Enter key on match URL
-        document
-          .getElementById("matchUrl")
-          .addEventListener("keypress", function (e) {
-            if (e.key === "Enter") {
-              analyzeMatch();
-            }
-          });
-      });
-      // --- Vigilante Mode (Live Update) ---
-      let vigilanteInterval = null;
-
-      function startLiveUpdateLoop() {
-          if (vigilanteInterval) clearInterval(vigilanteInterval);
-          
-          // Fetch interval from config
-          $.get("/api/config").done(function(config) {
-              const intervalMinutes = config.live_update_interval || 5;
-              const intervalMs = intervalMinutes * 60 * 1000;
-              
-              vigilanteInterval = setInterval(runVigilanteCheck, intervalMs);
-              console.log(`Modo Vigilante ativado: verificando jogos ao vivo a cada ${intervalMinutes} min.`);
-          });
-      }
-
-      function runVigilanteCheck() {
-          console.log("🔍 Vigilante: Verificando jogos pendentes e ao vivo...");
-          
-          // 1. Primeiro, atualiza jogos pendentes (scheduled -> inprogress)
-          // Isso garante que jogos que começaram sejam marcados como ao vivo
-          $.ajax({
-              url: "/api/matches/update_pending",
-              method: "POST",
-              contentType: "application/json",
-              silent: true // Não mostra toast para não poluir a UI
-          })
-          .done(function() {
-              console.log("✅ Vigilante: Pendentes atualizados.");
-              
-              // 2. Depois, recarrega a lista de análises para pegar jogos ao vivo
-              $.get("/api/analyses").done(function(analyses) {
-                  const liveMatches = analyses.filter(a => a.status === 'inprogress');
-                  
-                  if (liveMatches.length > 0) {
-                      console.log(`⚽ Vigilante: ${liveMatches.length} jogos ao vivo encontrados.`);
-                      // Atualiza a tabela de histórico para mostrar os novos status
-                      loadHistory();
-                  } else {
-                      console.log("ℹ️ Vigilante: Nenhum jogo ao vivo no momento.");
-                  }
-              });
-          })
-          .fail(function(xhr) {
-              console.error("❌ Vigilante: Erro ao atualizar pendentes:", xhr);
-          });
-      }
-
-      function updateNextMatch(matches, index) {
-          if (index >= matches.length) {
-              showToast("Live Update", "Todos os jogos atualizados!", "success");
-              loadHistory(); // Refresh table
-              return;
-          }
-
-          const match = matches[index];
-          console.log(`Vigilante: Atualizando ${match.match_id}...`);
-
-          $.ajax({
-              url: '/api/database/update_match',
-              method: 'POST',
-              contentType: 'application/json',
-              data: JSON.stringify({ url: match.match_id.toString() })
-          })
-          .always(function() {
-              // Wait 10s before next update to be polite to server/scraper
-              setTimeout(() => {
-                  updateNextMatch(matches, index + 1);
-              }, 10000);
-          });
-      }
-
-      // --- Single Match Update (Manual) ---
-      function updateSingleMatch(matchId) {
-          showToast("Aguarde", "Iniciando atualização...", "info");
-          
-          $.ajax({
-              url: '/api/database/update_match',
-              method: 'POST',
-              contentType: 'application/json',
-              data: JSON.stringify({ url: matchId.toString() })
-          })
-          .done(function() {
-              showToast("Sucesso", "Atualização iniciada! Aguarde alguns segundos.", "success");
-              // Poll for completion or just reload after a delay
-              setTimeout(() => {
-                  loadMatchResult(matchId);
-              }, 5000);
-          })
-          .fail(function(xhr) {
-              const error = xhr.responseJSON?.error || "Erro ao atualizar.";
-              showToast("Erro", error, "error");
-          });
-      }
-
-      // Start Vigilante on load
-      $(document).ready(function() {
-          startLiveUpdateLoop();
-          
-          // Auto-refresh da tabela de histórico a cada 30 segundos
-          setInterval(function() {
-              // Só atualiza se não houver tarefa rodando
-              if (!isRunning) {
-                  console.log("🔄 Auto-refresh: Atualizando tabela de histórico...");
-                  loadHistory();
-              }
-          }, 30000); // 30 segundos
-      });
     </script>
-  </body>
+</body>
 </html>

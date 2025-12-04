@@ -45,9 +45,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.database.db_manager import DBManager
 from src.scrapers.sofascore import SofaScoreScraper
-from src.ml.feature_engineering import prepare_training_data
-from src.ml.model import CornerPredictor
-from src.ml.feature_extraction import calculate_features_for_match
+from src.ml.features_v2 import prepare_features_for_prediction, create_advanced_features
+from src.ml.model_v2 import ProfessionalPredictor
 from src.analysis.statistical import StatisticalAnalyzer
 import pandas as pd
 
@@ -441,7 +440,7 @@ def get_match_result(match_id: str):
         return jsonify({'error': 'Partida não encontrada'}), 404
     
     # Fetch ML Prediction
-    query_ml = "SELECT predicted_value FROM predictions WHERE match_id = ? AND prediction_type = 'ML'"
+    query_ml = "SELECT predicted_value FROM predictions WHERE match_id = ? AND prediction_type IN ('ML', 'ML_V2') ORDER BY id DESC LIMIT 1"
     ml_pred = pd.read_sql_query(query_ml, conn, params=(match_id,))
     
     # Fetch Top 7
@@ -532,7 +531,7 @@ def get_analyses():
             m.away_score,
             m.status,
             m.start_timestamp,
-            (SELECT predicted_value FROM predictions WHERE match_id = m.match_id AND prediction_type = 'ML' LIMIT 1) as ml_prediction,
+            (SELECT predicted_value FROM predictions WHERE match_id = m.match_id AND prediction_type IN ('ML', 'ML_V2') ORDER BY id DESC LIMIT 1) as ml_prediction,
             (SELECT COUNT(*) FROM predictions WHERE match_id = m.match_id AND category = 'Top7') as num_predictions
         FROM matches m
         WHERE EXISTS (SELECT 1 FROM predictions p WHERE p.match_id = m.match_id)
@@ -598,6 +597,67 @@ def get_stats():
     ).iloc[0]['count']
     
     stats['accuracy'] = float(green_count / total_resolved * 100) if total_resolved > 0 else 0
+    
+    # Calculate MAE and RMSE for ML predictions
+    try:
+        ml_predictions_query = """
+            SELECT 
+                p.predicted_value,
+                (s.corners_home_ft + s.corners_away_ft) as actual_value
+            FROM predictions p
+            JOIN matches m ON p.match_id = m.match_id
+            JOIN match_stats s ON m.match_id = s.match_id
+            WHERE p.prediction_type IN ('ML', 'ML_V2') 
+            AND m.status = 'finished'
+            AND p.category = 'Professional'
+        """
+        ml_df = pd.read_sql_query(ml_predictions_query, conn)
+        
+        if not ml_df.empty and len(ml_df) > 0:
+            errors = ml_df['actual_value'] - ml_df['predicted_value']
+            mae = float(errors.abs().mean())
+            rmse = float((errors ** 2).mean() ** 0.5)
+            stats['mae'] = mae
+            stats['rmse'] = rmse
+        else:
+            stats['mae'] = None
+            stats['rmse'] = None
+    except Exception as e:
+        print(f"Erro ao calcular MAE/RMSE: {e}")
+        stats['mae'] = None
+        stats['rmse'] = None
+    
+    # Calculate ROI (assuming 1 unit bet per prediction, odds of 1.85)
+    try:
+        roi_query = """
+            SELECT status, COUNT(*) as count
+            FROM predictions
+            WHERE category = 'Top7' AND status IN ('GREEN', 'RED')
+            GROUP BY status
+        """
+        roi_df = pd.read_sql_query(roi_query, conn)
+        
+        if not roi_df.empty:
+            green = roi_df[roi_df['status'] == 'GREEN']['count'].sum() if 'GREEN' in roi_df['status'].values else 0
+            red = roi_df[roi_df['status'] == 'RED']['count'].sum() if 'RED' in roi_df['status'].values else 0
+            total_bets = green + red
+            
+            if total_bets > 0:
+                # Assuming average odds of 1.85 for wins
+                profit = (green * 0.85) - red  # Win: +0.85 units, Loss: -1 unit
+                roi_percentage = (profit / total_bets) * 100
+                stats['roi'] = float(roi_percentage)
+                stats['roi_units'] = float(profit)
+            else:
+                stats['roi'] = None
+                stats['roi_units'] = None
+        else:
+            stats['roi'] = None
+            stats['roi_units'] = None
+    except Exception as e:
+        print(f"Erro ao calcular ROI: {e}")
+        stats['roi'] = None
+        stats['roi_units'] = None
     
     db.close()
     
@@ -763,7 +823,7 @@ def _update_single_match_task(match_id: str) -> None:
 
 
 def _train_model_task(mode: str = 'standard') -> None:
-    """Tarefa de treinamento do modelo."""
+    """Tarefa de treinamento do modelo (Atualizado para V2)."""
     emit_log(f'🤖 Iniciando treinamento do modelo (Modo: {mode})...', 'info')
     update_progress(10, 'Carregando dados...')
     
@@ -776,98 +836,164 @@ def _train_model_task(mode: str = 'standard') -> None:
         return
     
     emit_log(f'📊 Carregados {len(df)} registros para treino.', 'info')
-    update_progress(30, 'Preparando features...')
+    update_progress(30, 'Gerando features avançadas (V2)...')
     
-    X, y, _ = prepare_training_data(df)
-    
-    emit_log(f'🔧 Features preparadas: {X.shape[1]} colunas, {len(y)} amostras', 'info')
-    update_progress(50, 'Treinando modelo...')
-    
-    with state_lock:
-        use_improved = system_state['config']['use_improved_model']
-    
-    if use_improved:
-        try:
-            from src.ml.model_improved import ImprovedCornerPredictor, prepare_improved_features
-            emit_log('🚀 Usando modelo melhorado (LightGBM)...', 'highlight')
+    try:
+        # Garante colunas corretas
+        if 'home_score' in df.columns and 'goals_ft_home' not in df.columns:
+            df['goals_ft_home'] = df['home_score']
+        if 'away_score' in df.columns and 'goals_ft_away' not in df.columns:
+            df['goals_ft_away'] = df['away_score']
+
+        # 1. Prepara features vetorizadas
+        X, y, timestamps = create_advanced_features(df, window_short=3, window_long=5)
+        
+        emit_log(f'🔧 Features V2 geradas: {X.shape[1]} colunas, {len(y)} amostras', 'info')
+        update_progress(50, 'Treinando Professional Predictor...')
+        
+        # 2. Treina Modelo
+        predictor = ProfessionalPredictor()
+        
+        if mode == 'optimized':
+            # Simulação de otimização (ou implementação real se houver método)
+            emit_log('🚀 Treinando com validação temporal...', 'highlight')
+            predictor.train_time_series_split(X, y, timestamps)
+        else:
+            predictor.train_time_series_split(X, y, timestamps)
             
-            # Prepara features melhoradas
-            X_improved, y_improved, _ = prepare_improved_features(df)
-            
-            predictor = ImprovedCornerPredictor()
-            
-            if mode == 'optimized':
-                emit_log('🚀 Executando Otimização (CV + GridSearch)...', 'highlight')
-                best_params, best_score = predictor.train_with_optimization(X_improved, y_improved)
-                emit_log(f'✅ Otimização concluída! Score: {best_score:.4f}', 'success')
-            else:
-                predictor.train(X_improved, y_improved)
-            
-            emit_log('✅ Modelo LightGBM treinado e salvo!', 'success')
-        except ImportError:
-            emit_log('⚠️ Modelo melhorado não disponível, usando Random Forest...', 'warning')
-            predictor = CornerPredictor()
-            predictor.train(X, y)
-    else:
-        predictor = CornerPredictor()
-        predictor.train(X, y)
-        emit_log('✅ Modelo Random Forest treinado e salvo!', 'success')
-    
+        emit_log('✅ Modelo Professional V2 treinado e salvo!', 'success')
+        
+    except Exception as e:
+        emit_log(f'❌ Erro no treinamento: {e}', 'error')
+        import traceback
+        traceback.print_exc()
+
     update_progress(100, 'Treinamento concluído')
 
 
 def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_history: pd.DataFrame, db: DBManager) -> Dict[str, Any]:
     """
-    Lógica central de previsão e persistência.
+    Lógica central de previsão e persistência (Atualizado para ML V2).
     Compartilhada entre 'Analisar Jogo' e 'Scanner'.
     """
     home_name = match_data['home_name']
     away_name = match_data['away_name']
+    home_id = match_data['home_id']
+    away_id = match_data['away_id']
     match_id = match_data['id']
     
-    # 1. Preparar Features
-    features = calculate_features_for_match(df_history, home_name, away_name)
+    # 1. Salvar o jogo ANTES de tentar calcular features.
+    try:
+        db.save_match(match_data)
+    except Exception as e:
+        return {'error': f'Erro ao salvar dados básicos: {e}'}
+
+    # 2. Preparar Features (V2)
+    try:
+        # Garante colunas corretas (compatibilidade)
+        if 'home_score' in df_history.columns and 'goals_ft_home' not in df_history.columns:
+            df_history['goals_ft_home'] = df_history['home_score']
+        if 'away_score' in df_history.columns and 'goals_ft_away' not in df_history.columns:
+            df_history['goals_ft_away'] = df_history['away_score']
+
+        features_df = prepare_features_for_prediction(
+            df_history=df_history,
+            home_team_id=home_id,
+            away_team_id=away_id,
+            window_short=3,
+            window_long=5
+        )
+    except Exception as e:
+        return {'error': f'Erro ao gerar features V2: {e}'}
     
-    if features is None:
-        return {'error': f'Dados insuficientes (mínimo 3 jogos) para {home_name} vs {away_name}'}
+    if features_df is None or features_df.empty:
+        return {'error': f'Histórico insuficiente para {home_name} ou {away_name}'}
     
-    # Recupera médias para exibição
-    h_avg = features[0]
-    a_avg = features[3]
+    # Recupera médias para exibição (Simulado das features V2 ou calculado aqui)
+    # Como features_v2 retorna um DF processado, vamos calcular médias simples do histórico para exibição
+    try:
+        home_games = df_history[(df_history['home_team_id'] == home_id) | (df_history['away_team_id'] == home_id)].tail(5)
+        away_games = df_history[(df_history['home_team_id'] == away_id) | (df_history['away_team_id'] == away_id)].tail(5)
+        
+        h_corners = []
+        for _, g in home_games.iterrows():
+            h_corners.append(g['corners_home_ft'] if g['home_team_id'] == home_id else g['corners_away_ft'])
+            
+        a_corners = []
+        for _, g in away_games.iterrows():
+            a_corners.append(g['corners_home_ft'] if g['home_team_id'] == away_id else g['corners_away_ft'])
+            
+        h_avg = sum(h_corners)/len(h_corners) if h_corners else 0
+        a_avg = sum(a_corners)/len(a_corners) if a_corners else 0
+    except:
+        h_avg, a_avg = 0, 0
+
+    # 3. Previsão ML (Professional V2)
+    try:
+        pred_array = predictor.predict(features_df)
+        ml_prediction = float(pred_array[0])
+    except Exception as e:
+        return {'error': f'Erro na inferência ML V2: {e}'}
     
-    # 2. Previsão
-    pred = predictor.predict([features])
-    ml_prediction = float(pred[0])
-    
-    # 3. Confiança e Best Bet
-    avg_total = features[0] + features[3]
-    diff = abs(ml_prediction - avg_total)
-    
-    confidence = 0.70
-    if diff < 2.0: 
-        confidence += 0.1
-    if ml_prediction > 10.5 or ml_prediction < 8.5: 
-        confidence += 0.1
-    confidence = min(0.95, confidence)
+    # 4. Confiança e Best Bet logic
+    confidence = 0.60 # Base
+    if ml_prediction > 10.5 or ml_prediction < 8.5: confidence += 0.15
+    if confidence > 0.95: confidence = 0.95
     
     best_bet = 'Over 9.5' if ml_prediction > 10 else 'Under 10.5'
     
-    # 4. Salvar no Banco
-    # Salva o jogo
-    db.save_match(match_data)
-    
-    # Salva a previsão
+    # 5. Salvar Previsão ML
     db.save_prediction(
         match_id=match_id,
-        pred_type='ML',
+        pred_type='ML_V2',
         value=ml_prediction,
         market=best_bet,
         prob=confidence,
-        odds=1.85, # Placeholder
-        category='Analysis',
+        odds=1.85, 
+        category='Professional',
         market_group='Corners',
         verbose=False
     )
+
+    # 6. Análise Estatística (Top 7 & Sugestões)
+    try:
+        analyzer = StatisticalAnalyzer()
+        
+        # Helper para preparar stats do histórico
+        def prepare_team_df(games, team_id):
+            data = []
+            for _, row in games.iterrows():
+                is_home = row['home_team_id'] == team_id
+                data.append({
+                    'corners_ft': row['corners_home_ft'] if is_home else row['corners_away_ft'],
+                    'corners_ht': row['corners_home_ht'] if is_home else row['corners_away_ht'],
+                    'corners_2t': (row['corners_home_ft'] - row['corners_home_ht']) if is_home else (row['corners_away_ft'] - row['corners_away_ht']),
+                    'shots_ht': row['shots_ot_home_ht'] if is_home else row['shots_ot_away_ht']
+                })
+            return pd.DataFrame(data)
+
+        # Filtra jogos do histórico para cada time
+        home_games = df_history[(df_history['home_team_id'] == home_id) | (df_history['away_team_id'] == home_id)].tail(5)
+        away_games = df_history[(df_history['home_team_id'] == away_id) | (df_history['away_team_id'] == away_id)].tail(5)
+        
+        if not home_games.empty and not away_games.empty:
+            df_h_stats = prepare_team_df(home_games, home_id)
+            df_a_stats = prepare_team_df(away_games, away_id)
+
+            # Executa análise estatística
+            top_picks, suggestions = analyzer.analyze_match(df_h_stats, df_a_stats, ml_prediction=ml_prediction, match_name=f"{home_name} vs {away_name}")
+            
+            # Salva Top 7
+            for pick in top_picks:
+                db.save_prediction(match_id, 'Statistical', 0, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category='Top7', market_group=pick['Mercado'])
+                
+            # Salva Sugestões
+            for level, pick in suggestions.items():
+                if pick:
+                    db.save_prediction(match_id, 'Statistical', 0, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category=f"Suggestion_{level}", market_group=pick['Mercado'])
+    except Exception as e:
+        # Não falha o processo todo se a estatística falhar, apenas loga
+        print(f"Erro na análise estatística: {e}")
     
     return {
         'match_name': f"{home_name} vs {away_name}",
@@ -922,22 +1048,21 @@ def _analyze_match_task(match_id: str) -> Dict[str, Any]:
         
         if use_improved:
             try:
-                from src.ml.model_improved import ImprovedCornerPredictor
-                predictor = ImprovedCornerPredictor()
+                predictor = ProfessionalPredictor()
                 if predictor.load_model():
                     model_loaded = True
-                    emit_log('🤖 Modelo ML carregado.', 'info')
+                    emit_log('🤖 Modelo Professional V2 carregado.', 'info')
             except ImportError:
                 pass
         
         if not model_loaded:
-            from src.ml.model import CornerPredictor
-            predictor = CornerPredictor()
-            if predictor.load():
+            # Fallback (tenta carregar mesmo se use_improved for false, ou se falhou)
+            predictor = ProfessionalPredictor()
+            if predictor.load_model():
                 model_loaded = True
         
         if not model_loaded:
-            emit_log('⚠️ Modelo não encontrado. Treine o sistema primeiro.', 'warning')
+            emit_log('⚠️ Modelo Profissional não encontrado. Treine o sistema primeiro.', 'warning')
             return {'error': 'Modelo não treinado'}
 
         # 2. Buscar Histórico
@@ -1004,9 +1129,10 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
         
     # 2. Determina ligas
     leagues_filter = None
-    if leagues_mode == 'top7':
+    if leagues_mode == 'top7' or leagues_mode == 'all':
         # IDs: Brasileirão A (325), Série B (390), Premier (17), La Liga (8), 
         # Bundesliga (31), Serie A (35), Ligue 1 (34), Liga Profesional (23)
+        # Nota: 'all' aqui refere-se a todas as ligas SUPORTADAS pelo sistema (Top 8)
         leagues_filter = [325, 390, 17, 8, 31, 35, 34, 23]
         
     emit_log(f'🔍 Iniciando Scanner para {date_label}...', 'info')
@@ -1021,11 +1147,10 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
     try:
         # Tenta carregar modelo ML
         try:
-            from src.ml.model_improved import ImprovedCornerPredictor
-            predictor = ImprovedCornerPredictor()
+            predictor = ProfessionalPredictor()
             model_loaded = predictor.load_model()
             if model_loaded:
-                emit_log('🤖 Modelo ML carregado com sucesso.', 'info')
+                emit_log('🤖 Modelo Professional V2 carregado com sucesso.', 'info')
             else:
                 emit_log('⚠️ Modelo ML não encontrado. Usando simulação.', 'warning')
         except ImportError:
@@ -1252,8 +1377,9 @@ def run_server(host: str = '0.0.0.0', port: int = 5000, debug: bool = False) -> 
 ╚══════════════════════════════════════════════════════════════════╝
     """)
     
-    # Inicia o scheduler de atualização automática
-    _start_background_scheduler()
+    # DESABILITADO: Auto-scheduler estava causando duplicação de dados
+    # O scanner agora só roda quando o usuário clicar manualmente
+    # _start_background_scheduler()
     
     app.run(host=host, port=port, debug=debug, threaded=True)
 

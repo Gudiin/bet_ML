@@ -38,68 +38,72 @@ Os dados brutos vêm "sujos". O computador não entende "10 escanteios". Ele pre
 
 ## 3. Inteligência Artificial (Machine Learning) 🤖
 
-Aqui é onde o computador "aprende".
+Aqui é onde o computador "aprende". Utilizamos uma abordagem de **Ensemble** (união de forças).
 
-### O Modelo: Random Forest (Floresta Aleatória)
+### Os Modelos
 
-Imagine que você quer saber se um filme é bom. Você pergunta para um amigo, e ele diz "Sim". Mas ele pode ter um gosto estranho.
-Agora, imagine que você pergunta para **100 amigos diferentes**. Se 80 disserem "Sim", você tem muito mais certeza.
+Em vez de confiar em apenas um "especialista", usamos três:
 
-O **Random Forest** funciona assim. Ele cria 100 "Árvores de Decisão" (os amigos).
+1.  **LightGBM** (Principal): Extremamente rápido e preciso para dados tabulares.
+2.  **XGBoost**: Robusto e excelente para capturar relações não-lineares.
+3.  **Random Forest**: O clássico, bom para evitar overfitting.
 
-- Uma árvore olha só para "Chutes no Gol".
-- Outra olha para "Posse de Bola".
-- Outra olha para "Ataques Perigosos".
+O sistema faz uma "votação ponderada" entre eles para chegar ao número final.
 
-No final, o modelo faz uma votação. A média das opiniões dessas 100 árvores é a nossa previsão final.
+### Validação Temporal (O Segredo do Sucesso) ⏳
 
-### O que ele aprendeu?
+Muitos iniciantes cometem o erro de misturar jogos de 2024 no treino e testar com jogos de 2023. Isso é **roubar**, pois você está usando o futuro para prever o passado.
 
-O modelo analisou milhares de jogos e descobriu correlações matemáticas. Por exemplo:
+Nós usamos **TimeSeriesSplit**:
 
-- **Alta correlação**: Muitos chutes ao gol geralmente resultam em muitos escanteios (o goleiro espalma pra fora).
-- **Baixa correlação**: Posse de bola no meio de campo não gera tantos escanteios.
+- Treinamos com Jan-Fev -> Testamos em Março.
+- Treinamos com Jan-Mar -> Testamos em Abril.
+- Treinamos com Jan-Abr -> Testamos em Maio.
 
----
-
-## 4. Análise Estatística (Monte Carlo) 🎲
-
-A IA nos dá um número (ex: "Vai ter 10.5 escanteios"). Mas futebol é caótico. E se der zebra?
-Para lidar com a sorte (aleatoriedade), usamos o **Método de Monte Carlo**.
-
-### Como funciona?
-
-Imagine que temos uma máquina do tempo.
-
-1.  Pegamos as estatísticas de ataque do Time A e defesa do Time B.
-2.  Simulamos a partida virtualmente.
-3.  Repetimos isso **10.000 vezes**.
-
-### O Resultado
-
-Desses 10.000 jogos simulados:
-
-- Em 2.000 jogos, saíram 8 escanteios.
-- Em 5.000 jogos, saíram 10 escanteios.
-- Em 3.000 jogos, saíram 12 escanteios.
-
-Isso cria uma **Curva de Probabilidade**. Podemos dizer: _"Existe 80% de chance de sair mais de 9 escanteios, porque isso aconteceu em 80% das nossas simulações"_.
+Isso simula o mundo real: a IA só sabe o que aconteceu _antes_ do jogo que ela está tentando prever. Além disso, nossas features usam janelas deslizantes (`shift(1)`) para garantir matematicamente que nenhum dado do jogo atual vaze para o treinamento.
 
 ---
 
-## 5. O Filtro de Alinhamento (Directional Filter) ⚖️
+## 4. Análise Estatística (O Motor Matemático) 🎲
 
-Para garantir segurança, unimos o melhor dos dois mundos: a IA e a Estatística.
+A IA nos dá um número (ex: "Vai ter 10.5 escanteios"). Mas futebol é caótico. Para modelar esse caos, usamos Distribuições de Probabilidade.
 
-- A **IA** olha o cenário macro (O jogo vai ser movimentado?).
-- A **Estatística** olha as linhas específicas (Over 9.5, Over 10.5).
+### Poisson vs. Binomial Negativa
 
-**A Regra de Ouro:**
+O sistema é inteligente o suficiente para escolher qual matemática usar:
 
-- Se a IA diz "Vai ser um jogo de MUITOS escanteios" (> 10.5), o sistema **proíbe** a gente de apostar em "Poucos escanteios" (Under).
-- Se a IA diz "Vai ser um jogo PARADO" (< 9.5), o sistema **proíbe** apostar em "Muitos escanteios" (Over).
+1.  **Poisson**: Usada quando o time é consistente (Média ≈ Variância). É o padrão para contagem de gols/escanteios.
+2.  **Binomial Negativa**: Usada quando o time é "louco" (Variância > Média). Se um time faz 2 escanteios num jogo e 15 no outro, a Poisson falha. A Binomial Negativa captura essa **Overdispersion** (dispersão exagerada) e ajusta o risco.
 
-Isso evita que a gente vá contra a tendência óbvia do jogo.
+### Simulação de Monte Carlo
+
+Com a distribuição escolhida, ligamos a "máquina do tempo":
+
+1.  Pegamos a média prevista (ajustada pela IA).
+2.  Simulamos a partida virtualmente **10.000 vezes**.
+3.  Contamos quantas vezes cada resultado aconteceu.
+
+Isso cria uma **Curva de Probabilidade Real** que considera tanto a habilidade do time quanto a sorte.
+
+---
+
+## 5. O "Aperto de Mão" (Integração IA + Estatística) 🤝
+
+Aqui está a mágica de como os cálculos "conversam entre si". Não usamos a IA sozinha, nem a Estatística sozinha.
+
+### O Fluxo da Verdade:
+
+1.  **IA Propõe**: "Acho que teremos 11.0 escanteios baseados na tática dos times."
+2.  **Clamper (O Juiz) Verifica**:
+    - O sistema olha a média histórica (ex: 9.0).
+    - Calcula o limite aceitável (ex: ±30% = 6.3 a 11.7).
+    - Se a IA dissesse 15.0, o Clamper reduziria para 11.7.
+    - _Isso impede que um erro da IA quebre a banca._
+3.  **Estatística Executa**:
+    - O valor validado (11.0) vira o parâmetro `lambda` da distribuição de Poisson/Binomial.
+    - As 10.000 simulações são rodadas usando esse novo centro de gravidade.
+
+**Resultado**: Temos a precisão tática da IA, mas com a segurança matemática e as margens de erro da Estatística. Se a IA estiver otimista demais, o Clamper segura. Se a Estatística for conservadora demais, a IA puxa para cima. É o equilíbrio perfeito.
 
 ---
 
