@@ -1,67 +1,72 @@
-# 🚀 Análise de Melhorias e Pontos Críticos
+# 🚀 Plano de Ação e Melhorias (Consolidado - 2 Relatórios)
 
-Este documento detalha os pontos de melhoria identificados no projeto após uma análise técnica profunda da arquitetura, código e metodologias utilizadas.
-
----
-
-## 🚨 Pontos Críticos (Prioridade Alta)
-
-Estes pontos podem afetar a confiabilidade das previsões ou a estabilidade do sistema.
-
-### 1. Validação Temporal no Treinamento Padrão
-
-- **Problema**: O método `train()` em `src/ml/model_improved.py` utiliza `train_test_split` com `random_state=42`. Embora as features usem janelas deslizantes (o que mitiga o vazamento de dados), misturar jogos de 2023 com 2024 no treino/teste pode criar um viés otimista. O futebol muda taticamente ao longo do tempo.
-- **Solução**: Padronizar o uso de `TimeSeriesSplit` (já presente em `train_with_optimization`) ou fazer um split manual baseado em data (ex: Treino = Jan-Out, Teste = Nov-Dez).
-
-### 2. Hardcoding no "Clamper" (Mecanismo de Segurança)
-
-- **Problema**: Em `src/analysis/statistical.py`, o mecanismo que limita a previsão da IA (Clamper) tem um valor fixo de **30%** (`max_deviation = 0.30`).
-- **Risco**: Em ligas muito voláteis ou jogos de copa, a IA pode estar correta ao prever algo fora da curva, mas será "censurada" por esse limite fixo.
-- **Solução**: Tornar este parâmetro configurável ou dinâmico, baseado na variância histórica da liga específica.
-
-### 3. Dependência de Bibliotecas Opcionais
-
-- **Problema**: O código tenta importar `lightgbm` e `xgboost` e faz fallback para `RandomForest` se falhar.
-- **Risco**: Se o ambiente de produção não tiver essas libs instaladas (o que pode acontecer silenciosamente), o modelo cairá para uma performance inferior sem um aviso muito explícito (apenas um print).
-- **Solução**: Adicionar logs de alerta mais robustos ou falhar explicitamente se o modo "Ensemble" for solicitado mas as libs não estiverem presentes.
+Este documento unifica as análises de **dois especialistas** (Arquiteto Sênior & Data Scientist). Ambos concordam nos pontos críticos, e o segundo relatório forneceu soluções técnicas detalhadas.
 
 ---
 
-## ⚠️ Melhorias Técnicas (Prioridade Média)
+## 🚨 Fase 1: Integridade e Correção (Prioridade Máxima)
 
-Melhorias que visam a manutenibilidade e a qualidade do código.
+**Objetivo:** Garantir que os números reportados sejam reais e que o modelo não esteja "trapaceando" (vazamento de dados).
 
-### 1. Tratamento de "Cold Start" (Início de Temporada)
+### 1. Correção da Lógica Financeira (ROI Fictício)
 
-- **Problema**: O `feature_engineering.py` remove linhas com `NaN`. Isso significa que as primeiras 5 rodadas de cada time são ignoradas no treinamento.
-- **Impacto**: Perdemos dados valiosos do início de campeonatos.
-- **Sugestão**: Implementar uma janela dinâmica (ex: na rodada 2, usar média dos últimos 1 jogos) ou imputar dados com médias da temporada anterior.
+- **Diagnóstico (Consenso)**: O código atual usa `avg_odd = 1.90` hardcoded. Isso gera resultados ilusórios.
+- **Ação**:
+  - Implementar cálculo de ROI baseado na **Odd Real** ou simulação dinâmica.
+  - Adicionar métricas de negócio no log de treino: **Win Rate** e **ROI Estimado** (não apenas MAE).
 
-### 2. Duplicação de Código de Modelos
+### 2. Blindagem contra Data Leakage (Vazamento de Dados)
 
-- **Problema**: Existem arquivos `model.py`, `model_v2.py` e `model_improved.py`.
-- **Impacto**: Confusão sobre qual é a "verdade" do projeto.
-- **Sugestão**: Consolidar tudo em uma estrutura limpa, talvez movendo versões antigas para uma pasta `legacy/` ou refatorando para uma classe base única.
-
-### 3. Logs e Observabilidade
-
-- **Problema**: O sistema usa muitos `print()`.
-- **Sugestão**: Implementar o módulo `logging` do Python. Isso permitiria salvar logs em arquivo para debug posterior ("Por que o sistema previu X naquele jogo de ontem?").
+- **Diagnóstico (Consenso)**: O uso de `train_test_split` com `shuffle=True` mistura passado e futuro.
+- **Ação**:
+  - Padronizar o uso de `TimeSeriesSplit` ou corte manual por data (`train < data < test`).
+  - Garantir que o dataset de treino contenha apenas jogos finalizados.
 
 ---
 
-## 💡 Melhorias de Produto (Visão de Futuro)
+## ⚙️ Fase 2: Arquitetura e Performance (High Impact)
 
-Sugestões para evoluir o produto.
+**Objetivo:** Otimizar o código para velocidade e robustez.
 
-### 1. Análise de "Momentum" Intra-jogo
+### 3. Feature Engineering Vetorizado (Novo!)
 
-- **Ideia**: Se tivermos acesso a dados ao vivo, poderíamos ajustar a previsão do Poisson/Monte Carlo em tempo real (ex: saiu um gol aos 10min, a expectativa de escanteios muda).
+- **Diagnóstico (Relatório 2)**: O arquivo `feature_extraction.py` itera linha por linha (lento). O `features_v2.py` é melhor, mas pode ser aprimorado.
+- **Ação**:
+  - **Centralizar tudo em `features_v2.py`** usando abordagem 100% vetorizada (Pandas `groupby` + `shift`).
+  - **Deletar `feature_extraction.py`** (código legado/lento).
+  - Implementar a estratégia "Team-Centric" sugerida: transformar partidas em linhas de tempo por time para calcular médias móveis com precisão.
 
-### 2. Fator "Must Win"
+### 4. Monte Carlo "Clamper" (Novo!)
 
-- **Ideia**: Adicionar uma feature que indique a necessidade de vitória (ex: final de campeonato, luta contra rebaixamento). Times desesperados tendem a gerar mais escanteios no final do jogo.
+- **Diagnóstico (Relatório 2)**: Se o modelo de ML "alucinar" (ex: prever 20 escanteios), ele contamina a simulação de Monte Carlo.
+- **Ação**:
+  - Adicionar um **Limitador (Clamper)** na classe `StatisticalAnalyzer`.
+  - Regra: A média ajustada não pode desviar mais de **30%** da média histórica, independente da previsão da IA.
 
-### 3. Backtesting Automatizado
+---
 
-- **Ideia**: Criar um script que roda o modelo em todos os jogos de 2023 e calcula exatamente qual teria sido o ROI (Retorno sobre Investimento) se tivéssemos apostado R$ 10,00 em cada sugestão "Easy". Isso valida a estratégia financeiramente.
+## 🧠 Fase 3: Evolução do Modelo
+
+### 5. Probabilidade Real (Poisson)
+
+- **Diagnóstico (Consenso)**: O modelo deve prever probabilidade, não apenas média.
+- **Ação**:
+  - Confirmar uso de `objective='poisson'` no LightGBM.
+  - Implementar `scipy.stats.poisson.sf` para decisão de aposta (+EV).
+
+### 6. Correção do Viés de Liga
+
+- **Ação**: Adicionar `tournament_id` como feature categórica e features relativas (`Média Time / Média Liga`).
+
+---
+
+## 📅 Roadmap de Implementação
+
+1.  **Imediato (Correção)**:
+    - Arrumar validação temporal (`TimeSeriesSplit`).
+    - Implementar o "Clamper" no Monte Carlo (proteção rápida).
+2.  **Curto Prazo (Refatoração)**:
+    - Reescrever `features_v2.py` (Vetorizado) e apagar o antigo.
+    - Corrigir cálculo de ROI nos logs.
+3.  **Médio Prazo (Evolução)**:
+    - Implementar lógica de Poisson (+EV) para apostas.

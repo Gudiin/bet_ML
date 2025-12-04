@@ -1,0 +1,106 @@
+================================================================================
+AUDITORIA TÉCNICA: PROFESSIONAL PREDICTOR V2
+DATA: 04/12/2025
+RESPONSÁVEL: Arquiteto de Software & Data Scientist Sênior
+STATUS: CRÍTICO (AÇÃO IMEDIATA REQUERIDA)
+================================================================================
+
+[1] RELATÓRIO DE RISCOS E FALHAS (AUDITORIA)
+--------------------------------------------------------------------------------
+
+A. DATA LEAKAGE (VAZAMENTO DE DADOS)
+   STATUS: Risco Latente (Parcialmente Controlado)
+   ARQUIVO: src/ml/features_v2.py
+   
+   ANÁLISE:
+   - O uso de `.shift(1)` e `TimeSeriesSplit` está tecnicamente correto para
+     evitar vazamento simples.
+   - O PERIGO REAL: Ordem de Execução "Scanner" vs "Predição".
+   - CENÁRIO DE FALHA: Se o Scanner atualizar um jogo para 'finished' no banco
+     ANTES do script de predição rodar para aquele ID, o `shift(1)` pode falhar
+     ou pegar o dado "do futuro" se a ordenação por timestamp não for determinística
+     para jogos simultâneos.
+
+   AÇÃO CORRETIVA:
+   - Garantir isolamento estrito: O DataFrame de treino (`df_history`) deve conter
+     APENAS jogos com status='finished'. O jogo alvo (previsão) deve ser injetado
+     separadamente, garantindo que suas colunas de target sejam NaN/Zero antes
+     do cálculo das features.
+
+B. LÓGICA FINANCEIRA & ODDS (FALHA CONCEITUAL)
+   STATUS: CRÍTICO (Prioridade Máxima)
+   ARQUIVO: src/ml/model_v2.py -> _evaluate_profitability
+   
+   O ERRO (Linha ~147):
+   >> avg_odd = 1.90  # Hardcoded
+   >> roi = (hits * avg_odd) - total_bets
+   
+   IMPACTO:
+   - O ROI calculado é FICTÍCIO.
+   - O modelo pode estar acertando apenas "favoritos" (Odd 1.40) e o backtest
+     reportará lucro falso baseado na odd fixa de 1.90.
+   - Risco de Quebra de Banca: Um modelo com Win Rate de 55% em odds de 1.50
+     é PREJUÍZO (EV Negativo), mas seu código atual diria que é lucro.
+
+C. VIÉS DAS LIGAS (LEAGUE BIAS)
+   STATUS: ALTO
+   ARQUIVO: src/ml/features_v2.py
+   
+   ANÁLISE:
+   - O modelo trata "8 escanteios na Série B" igual a "8 escanteios na Premier League".
+   - Não há encoding da liga (`tournament_id`) ou normalização por média da liga.
+   - O modelo aprenderá a média global das 8 ligas, subestimando ligas de alto volume
+     e superestimando ligas de baixo volume.
+
+--------------------------------------------------------------------------------
+
+[2] PLANO DE ENGENHARIA E MATEMÁTICA (RECOMENDAÇÕES)
+--------------------------------------------------------------------------------
+
+A. DE REGRESSÃO PARA PROBABILIDADE REAL (POISSON)
+   O modelo atual retorna Lambda (λ) [média esperada], não probabilidade.
+   Para apostas, precisamos da chance de o evento ocorrer.
+
+   IMPLEMENTAÇÃO SUGERIDA:
+   
+   from scipy.stats import poisson
+
+   def get_true_probability(lambda_pred, line):
+       # P(X > line) = Survival Function da Poisson
+       # Ex: Se linha é 9.5, queremos probabilidade de 10 ou mais.
+       return poisson.sf(int(line), lambda_pred)
+
+   # Lógica de Decisão (+EV):
+   prob_real = get_true_probability(10.45, 9.5)  # Ex: 0.60
+   odd_justa = 1 / prob_real                     # Ex: 1.66
+   
+   if odd_casa_aposta > (odd_justa + margem):
+       APOSTAR()
+
+B. MÉTRICAS DE VALIDAÇÃO (ALÉM DO MAE)
+   Abandone MAE para decisão de modelo. Use métricas probabilísticas:
+   
+   1. Poisson Deviance (Treino): Penaliza erros proporcionalmente à variância.
+   2. Brier Score (Backtest): Mede a precisão da probabilidade.
+      - Se o modelo diz 90% e erra, a punição é quadrática.
+
+C. FEATURE ENGINEERING AVANÇADA (CONTEXTO)
+   Em src/ml/features_v2.py, adicione:
+
+   1. League Encoding: Passar `tournament_id` como feature categórica (LGBM aceita nativamente).
+   2. Relative Strength: 
+      >> home_strength = home_corners_avg / league_avg_corners
+   3. Implied Game State:
+      >> match_winner_odds (Essencial! Favoritos pressionam mais = mais escanteios).
+
+D. RETREINO AUTOMATIZADO (CHAMPION/CHALLENGER)
+   Fluxo para `train_model_v2.py`:
+   
+   1. Não sobrescreva `model_v2.pkl` diretamente.
+   2. Treine `model_candidate.pkl`.
+   3. Rode Backtest na última semana (Holdout recente).
+   4. Se Profit(Candidate) > Profit(Current) -> Promote Candidate.
+
+================================================================================
+FIM DO RELATÓRIO
+================================================================================

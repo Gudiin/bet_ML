@@ -883,6 +883,12 @@ def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_his
     away_id = match_data['away_id']
     match_id = match_data['id']
     
+    # 0. Safety Check: Se o jogo é no futuro, força status 'notstarted'
+    # Isso corrige bugs onde a API retorna 'finished' incorretamente
+    import time
+    if match_data.get('timestamp', 0) > time.time() + 300: # 5 min tolerance
+        match_data['status'] = 'notstarted'
+    
     # 1. Salvar o jogo ANTES de tentar calcular features.
     try:
         db.save_match(match_data)
