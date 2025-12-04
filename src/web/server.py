@@ -75,7 +75,8 @@ system_state = {
         'use_improved_model': True,
         'model_type': 'lightgbm',  # random_forest, lightgbm, xgboost
         'use_improved_model': True,
-        'confidence_threshold': 0.65
+        'confidence_threshold': 0.65,
+        'monitor_interval': 5  # Minutos (Novo)
     },
     'scan_results': []  # Stores results from the latest scan
 }
@@ -483,7 +484,7 @@ def api_start_scanner():
     data = request.json or {}
     date_mode = data.get('date_mode', 'today') # today, tomorrow, specific
     specific_date = data.get('specific_date')
-    leagues_mode = data.get('leagues_mode', 'all') # all, top7
+    # leagues_mode removido (agora é sempre Top 8)
     
     with state_lock:
         if system_state['is_running']:
@@ -495,7 +496,7 @@ def api_start_scanner():
     
     def run_scanner():
         try:
-            _scan_opportunities_task(date_mode, specific_date, leagues_mode)
+            _scan_opportunities_task(date_mode, specific_date)
         finally:
             with state_lock:
                 system_state['is_running'] = False
@@ -1099,21 +1100,17 @@ def _analyze_match_task(match_id: str) -> Dict[str, Any]:
         scraper.stop()
 
 
-def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_mode: str = 'all') -> None:
+def _scan_opportunities_task(date_mode: str, specific_date: str = None) -> None:
     """
-    Tarefa de background para o Scanner de Oportunidades.
+    Tarefa de background para o Scanner de Oportunidades (PRE-LIVE).
     
-    Regras de Negócio (Nível 3):
-        1. Janela de Tempo: Usa horário de Brasília (UTC-3) para definir "Hoje" e "Amanhã".
-        2. Filtro de Lixo: Pula silenciosamente times com menos de 3 jogos no histórico.
-        3. API Economy: O scraper agora busca apenas a rodada atual (implementado no sofascore.py).
+    Objetivo: Encontrar NOVOS jogos que ainda não estão no banco de dados.
+    Filtro: Apenas Top 8 Ligas (Hardcoded).
     """
     from datetime import datetime, timedelta, timezone
-    import numpy as np
     import time
     
-    # 1. Determina a data (Com Fuso Horário de Brasília - UTC-3)
-    # Cria timezone UTC-3
+    # 1. Determina a data (UTC-3)
     brt_tz = timezone(timedelta(hours=-3))
     now_brt = datetime.now(brt_tz)
     
@@ -1127,15 +1124,12 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
         date_str = now_brt.strftime('%Y-%m-%d')
         date_label = f"HOJE ({date_str})"
         
-    # 2. Determina ligas
-    leagues_filter = None
-    if leagues_mode == 'top7' or leagues_mode == 'all':
-        # IDs: Brasileirão A (325), Série B (390), Premier (17), La Liga (8), 
-        # Bundesliga (31), Serie A (35), Ligue 1 (34), Liga Profesional (23)
-        # Nota: 'all' aqui refere-se a todas as ligas SUPORTADAS pelo sistema (Top 8)
-        leagues_filter = [325, 390, 17, 8, 31, 35, 34, 23]
+    # 2. Determina ligas (Top 8 Hardcoded)
+    # IDs: Brasileirão A (325), Série B (390), Premier (17), La Liga (8), 
+    # Bundesliga (31), Serie A (35), Ligue 1 (34), Liga Profesional (23)
+    leagues_filter = [325, 390, 17, 8, 31, 35, 34, 23]
         
-    emit_log(f'🔍 Iniciando Scanner para {date_label}...', 'info')
+    emit_log(f'🔍 Iniciando Scanner Pre-Live (Top 8 Ligas) para {date_label}...', 'info')
     update_progress(5, 'Inicializando scraper...')
     
     with state_lock:
@@ -1150,87 +1144,88 @@ def _scan_opportunities_task(date_mode: str, specific_date: str = None, leagues_
             predictor = ProfessionalPredictor()
             model_loaded = predictor.load_model()
             if model_loaded:
-                emit_log('🤖 Modelo Professional V2 carregado com sucesso.', 'info')
+                emit_log('🤖 Modelo Professional V2 carregado.', 'info')
             else:
                 emit_log('⚠️ Modelo ML não encontrado. Usando simulação.', 'warning')
         except ImportError:
-            emit_log('⚠️ Módulo ML não encontrado. Usando simulação.', 'warning')
             model_loaded = False
             predictor = None
 
         scraper.start()
-        update_progress(10, 'Buscando jogos...')
+        update_progress(10, 'Buscando agenda de jogos...')
         
-        # Busca jogos usando o novo método otimizado (API Economy)
+        # Busca jogos agendados
         matches = scraper.get_scheduled_matches(date_str, leagues_filter)
         
         if not matches:
-            emit_log('❌ Nenhum jogo encontrado para esta data.', 'warning')
+            emit_log('❌ Nenhum jogo encontrado na agenda.', 'warning')
             return
             
-        emit_log(f'📊 Encontrados {len(matches)} jogos.', 'success')
-        update_progress(20, f'Analisando {len(matches)} jogos...')
+        emit_log(f'📅 Agenda: {len(matches)} jogos encontrados.', 'info')
+        
+        # FILTRO DE NOVOS JOGOS
+        # Verifica quais já estão no banco para não processar de novo
+        conn = db.connect()
+        existing_ids = pd.read_sql_query("SELECT match_id FROM matches", conn)['match_id'].astype(str).tolist()
+        conn.close()
+        
+        new_matches = [m for m in matches if str(m['match_id']) not in existing_ids]
+        
+        if not new_matches:
+            emit_log('✅ Todos os jogos da agenda já foram analisados.', 'success')
+            update_progress(100, 'Concluído')
+            return
+            
+        emit_log(f'🚀 {len(new_matches)} NOVOS jogos para analisar!', 'highlight')
+        update_progress(20, f'Analisando {len(new_matches)} novos jogos...')
         
         opportunities = []
-        total = len(matches)
+        total = len(new_matches)
         
-        # Carrega histórico para features
+        # Carrega histórico
         df_history = db.get_historical_data()
         
-        if df_history.empty:
-            emit_log('⚠️ Banco de dados vazio! O Scanner precisa de histórico para funcionar.', 'warning')
-            emit_log('💡 Dica: Execute "Atualizar Banco de Dados" primeiro.', 'info')
-        
-        for i, match in enumerate(matches):
+        for i, match in enumerate(new_matches):
             progress = 20 + int((i / total) * 75)
             match_name = f"{match['home_team']} vs {match['away_team']}"
             
-            # Log de progresso explícito
             emit_log(f'[{i+1}/{total}] Analisando: {match_name}', 'info')
             update_progress(progress, f'Analisando {i+1}/{total}')
             
             try:
-                # Se não tiver modelo ou histórico, pula
                 if not model_loaded or df_history.empty:
-                    emit_log('   ⚠️ Pulo: Modelo ou histórico indisponível.', 'warning')
                     continue
                 
-                # 1. Busca detalhes COMPLETOS do jogo (Necessário para análise correta)
-                # Isso resolve o problema de "Analisar Jogo" vs "Scanner"
                 match_id = match.get('match_id')
-                if not match_id:
-                    continue
+                if not match_id: continue
                     
+                # Busca detalhes e processa
                 details = scraper.get_match_details(match_id)
                 if not details:
-                    emit_log(f'   ⚠️ Erro ao buscar detalhes de {match_name}', 'warning')
+                    emit_log(f'   ⚠️ Erro ao buscar detalhes.', 'warning')
                     continue
                 
-                # 2. Processa usando a lógica unificada
                 result = _process_match_prediction(details, predictor, df_history, db)
                 
-                if 'error' in result:
-                    emit_log(f"   ⚠️ {result['error']}", 'warning')
-                else:
-                    # Filtra apenas oportunidades com alta confiança para a UI
+                if 'error' not in result:
                     if result['confidence'] >= 60:
-                        result['start_time'] = match['start_time'] # Mantém horário original
+                        result['start_time'] = match['start_time']
                         result['tournament'] = match['tournament']
                         opportunities.append(result)
                         emit_log(f"   ✅ Oportunidade: {result['best_bet']} (@1.85)", 'success')
                     else:
-                        emit_log(f"   ℹ️ Rejeitado: Confiança baixa ({result['confidence']}%)", 'info')
+                        emit_log(f"   ℹ️ Baixa confiança ({result['confidence']}%)", 'info')
                         
             except Exception as e:
                 print(f"Erro ao analisar {match_name}: {e}")
                 
-        # Ordena e salva resultados para UI
+        # Ordena e salva resultados
         opportunities.sort(key=lambda x: x['confidence'], reverse=True)
         
         with state_lock:
             system_state['scan_results'] = opportunities
             
-        emit_log(f'✅ Scanner finalizado! {len(opportunities)} oportunidades encontradas.', 'success')
+        emit_log(f'✅ Scanner finalizado! {len(opportunities)} novas oportunidades.', 'success')
         update_progress(100, 'Concluído')
         
     except Exception as e:

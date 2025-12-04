@@ -184,17 +184,22 @@ class DBManager:
         conn = self.connect()
         cursor = conn.cursor()
         try:
-            # Verifica se já existe previsão idêntica (proteção contra duplicatas)
-            cursor.execute('''
-                SELECT id FROM predictions 
-                WHERE match_id = ? AND prediction_type = ? AND category = ? AND market = ?
-            ''', (match_id, pred_type, category, market))
+            # Lógica de UPSERT específica para ML: Só pode haver UMA previsão de ML por jogo
+            if pred_type == 'ML_V2':
+                cursor.execute("DELETE FROM predictions WHERE match_id = ? AND prediction_type = 'ML_V2'", (match_id,))
             
-            existing = cursor.fetchone()
-            if existing:
-                if verbose:
-                    print(f"⚠️ Previsão duplicada ignorada para jogo {match_id} ({category}/{market})")
-                return  # Não salva duplicata
+            # Para outras (Statistical), verifica duplicata exata
+            else:
+                cursor.execute('''
+                    SELECT id FROM predictions 
+                    WHERE match_id = ? AND prediction_type = ? AND category = ? AND market = ?
+                ''', (match_id, pred_type, category, market))
+                
+                existing = cursor.fetchone()
+                if existing:
+                    if verbose:
+                        print(f"⚠️ Previsão duplicada ignorada para jogo {match_id} ({category}/{market})")
+                    return  # Não salva duplicata
 
             cursor.execute('''
                 INSERT INTO predictions (match_id, prediction_type, predicted_value, market, probability, odds, category, market_group)
@@ -291,8 +296,9 @@ class DBManager:
         cursor = conn.cursor()
         try:
             cursor.execute("DELETE FROM predictions WHERE match_id = ?", (match_id,))
+            deleted_count = cursor.rowcount
             conn.commit()
-            print(f"Previsões antigas removidas para o jogo {match_id}.")
+            print(f"🧹 Limpeza: {deleted_count} previsões antigas removidas para o jogo {match_id}.")
         except Exception as e:
             print(f"Erro ao remover previsões antigas: {e}")
 

@@ -119,6 +119,7 @@
             font-weight: 800;
             background: -webkit-linear-gradient(45deg, #3b82f6, #8b5cf6);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
@@ -279,18 +280,20 @@
                                     </div>
                                 </div>
                                 
+                                </div>
+                                
                                 <div class="col-md-4">
-                                    <label class="form-label text-muted small text-uppercase fw-bold">Ligas</label>
-                                    <select class="form-select form-control-dark" id="scannerLeagues">
-                                        <option value="top7" selected>⭐ Top 8 Principais</option>
-                                        <option value="all">🌐 Todas as Ligas</option>
-                                    </select>
+                                    <div class="d-flex align-items-center h-100">
+                                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary w-100 py-2">
+                                            <i class="bi bi-trophy-fill me-2"></i>Top 8 Ligas
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <div class="col-md-2">
                                     <div class="form-check form-switch p-0 d-flex flex-column align-items-center pt-2">
-                                        <label class="form-check-label text-muted small text-uppercase fw-bold mb-2" for="vigilanteToggle">
-                                            <i class="bi bi-shield-lock me-1"></i>Vigilante
+                                        <label class="form-check-label text-muted small text-uppercase fw-bold mb-2" for="vigilanteToggle" title="Atualiza automaticamente o resultado de jogos pendentes">
+                                            <i class="bi bi-activity me-1"></i>Monitor
                                         </label>
                                         <input class="form-check-input ms-0" style="width: 3em; height: 1.5em;" type="checkbox" id="vigilanteToggle" onchange="toggleVigilante()">
                                     </div>
@@ -298,7 +301,7 @@
 
                                 <div class="col-md-3">
                                     <button class="btn btn-primary w-100 btn-custom" onclick="startScanner()" id="btnStartScanner">
-                                        <i class="bi bi-rocket-takeoff me-2"></i>Executar
+                                        <i class="bi bi-search me-2"></i>Buscar Novos
                                     </button>
                                 </div>
                             </div>
@@ -307,7 +310,7 @@
 
                     <div class="col-12" id="scannerResultsArea" style="display:none;">
                         <div class="d-flex justify-content-between align-items-center mb-3 border-start border-4 border-primary ps-3">
-                            <h5 class="text-white mb-0">Oportunidades Encontradas</h5>
+                            <h5 class="text-white mb-0">Novas Oportunidades Encontradas</h5>
                             <span class="badge bg-dark border border-secondary" id="lastUpdateTag">Atualizado: --:--</span>
                         </div>
                         <div class="row g-3" id="scannerCardsContainer">
@@ -397,6 +400,7 @@
                             <tr>
                                 <th class="p-3">Data/Hora</th>
                                 <th class="p-3">Partida</th>
+                                <th class="p-3">Status</th>
                                 <th class="p-3">Previsão</th>
                                 <th class="p-3 text-end">Ação</th>
                             </tr>
@@ -514,6 +518,9 @@
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
+                        <label class="form-label text-muted small">Intervalo do Monitor (minutos)</label>
+                        <input type="number" class="form-control form-control-dark mb-3" id="monitorInterval" value="5" min="1">
+                        
                         <button class="btn btn-outline-warning w-100 mb-2" onclick="updateDatabase()">Atualizar Base de Dados</button>
                         <button class="btn btn-outline-success w-100" onclick="trainModel()">Retreinar Modelo IA</button>
                     </div>
@@ -574,54 +581,99 @@
         }
 
         // ==========================================
-        // VIGILANTE MODE
+        // MONITOR MODE (Updated)
         // ==========================================
         function toggleVigilante() {
             const isActive = document.getElementById('vigilanteToggle').checked;
             
             if(isActive) {
-                console.log("👮 Vigilante iniciado.");
-                setSystemStatus(true, "Vigilante Iniciando...", true);
+                console.log("👮 Monitor iniciado.");
+                setSystemStatus(true, "Monitor Iniciando...", true);
                 
                 // Primeira execução imediata
-                fetchScannerUpdate(true);
+                triggerMonitorUpdate();
                 
-                // Define intervalo para 60 segundos
+                // Define intervalo baseado na config
+                const intervalMinutes = parseInt(document.getElementById('monitorInterval').value) || 5;
+                const intervalMs = intervalMinutes * 60 * 1000;
+                
+                console.log(`⏱️ Intervalo do Monitor: ${intervalMinutes} min`);
+                
                 vigilanteInterval = setInterval(() => {
-                    fetchScannerUpdate(true);
-                }, 60000); 
+                    triggerMonitorUpdate();
+                }, intervalMs); 
             } else {
-                console.log("👮 Vigilante parado.");
+                console.log("👮 Monitor parado.");
                 clearInterval(vigilanteInterval);
                 setSystemStatus(false);
             }
         }
 
-        function fetchScannerUpdate(silent = false) {
-            if(!silent) setSystemStatus(true, "Atualizando...");
-            
-            const dateMode = document.querySelector('input[name="scannerDate"]:checked').value;
-            const leaguesMode = document.getElementById('scannerLeagues').value;
-            
-            $.ajax({
-                url: '/api/scanner/start',
-                method: 'POST',
-                contentType: 'application/json',
-                data: JSON.stringify({ date_mode: dateMode, leagues_mode: leaguesMode })
-            }).done(() => {
-                const check = setInterval(() => {
-                    $.get("/api/status").done(s => {
-                        if(!s.is_running) {
-                            clearInterval(check);
-                            loadScannerResults();
-                            if(document.getElementById('vigilanteToggle').checked) {
-                                setSystemStatus(true, "Vigilante: Monitorando", true);
+        function triggerMonitorUpdate() {
+            // Chama o endpoint de atualização de pendentes
+            $.post('/api/matches/update_pending')
+                .done(() => {
+                    setSystemStatus(true, "Monitor: Atualizando...", true);
+                    const check = setInterval(() => {
+                        $.get("/api/status").done(s => {
+                            if(!s.is_running) {
+                                clearInterval(check);
+                                if(document.getElementById('vigilanteToggle').checked) {
+                                    setSystemStatus(true, "Monitor: Aguardando...", true);
+                                }
+                                // Atualiza histórico visualmente se estiver na aba
+                                loadHistory();
                             }
-                        }
-                    });
-                }, 2000);
+                        });
+                    }, 2000);
+                })
+                .fail((err) => {
+                    console.error("Erro no Monitor:", err);
+                    if(document.getElementById('vigilanteToggle').checked) {
+                        setSystemStatus(true, "Monitor: Erro (Tentando novamente...)", true);
+                    }
+                });
+        }
+
+        // ==========================================
+        // CONFIGURATION
+        // ==========================================
+        function loadConfig() {
+            $.get('/api/config').done(function(config) {
+                document.getElementById('headlessMode').checked = config.headless;
+                if(config.monitor_interval) {
+                    document.getElementById('monitorInterval').value = config.monitor_interval;
+                }
             });
         }
+
+        function saveConfig() {
+            const config = {
+                headless: document.getElementById('headlessMode').checked,
+                monitor_interval: parseInt(document.getElementById('monitorInterval').value)
+            };
+            
+            $.ajax({
+                url: '/api/config',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(config)
+            });
+            
+            // Se o monitor estiver ativo, reinicia para aplicar novo intervalo
+            if(document.getElementById('vigilanteToggle').checked) {
+                toggleVigilante(); // Desliga
+                setTimeout(() => {
+                    document.getElementById('vigilanteToggle').checked = true;
+                    toggleVigilante(); // Liga com novo intervalo
+                }, 500);
+            }
+        }
+        
+        // Load config on startup
+        $(document).ready(() => {
+            loadConfig();
+        });
 
         // ==========================================
         // DATA VISUALIZATION HELPERS
@@ -826,13 +878,13 @@
         function startScanner() {
             setSystemStatus(true, "Scanner Rodando...");
             const dateMode = document.querySelector('input[name="scannerDate"]:checked').value;
-            const leaguesMode = document.getElementById('scannerLeagues').value;
+            // leaguesMode removed
             
             $.ajax({
                 url: '/api/scanner/start',
                 method: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify({ date_mode: dateMode, leagues_mode: leaguesMode })
+                data: JSON.stringify({ date_mode: dateMode })
             }).done(() => {
                 const check = setInterval(() => {
                     $.get("/api/status").done(s => {
@@ -908,11 +960,18 @@
                      const dateObj = new Date(i.start_timestamp * 1000);
                      const dateStr = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
                      const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                     
+                     // Status Badge Logic
+                     let statusBadge = '<span class="badge bg-secondary">?</span>';
+                     if(i.status === 'finished') statusBadge = '<span class="badge bg-dark border border-secondary text-muted">Encerrado</span>';
+                     else if(i.status === 'inprogress') statusBadge = '<span class="badge bg-danger border border-danger bg-opacity-10 text-danger animate-pulse">Ao Vivo</span>';
+                     else statusBadge = '<span class="badge bg-info border border-info bg-opacity-10 text-info">Agendado</span>';
 
                      tbody.append(`
                         <tr>
                             <td class="text-muted small">${dateStr} ${timeStr}</td>
                             <td>${i.home_team_name} vs ${i.away_team_name}</td>
+                            <td>${statusBadge}</td>
                             <td><span class="badge bg-primary bg-opacity-10 text-primary">${i.ml_prediction ? i.ml_prediction.toFixed(1) : '-'}</span></td>
                             <td class="text-end">
                                 <button class="btn btn-sm btn-dark border-secondary" onclick="analyzeFromScanner('${i.match_id}')"><i class="bi bi-eye"></i></button>

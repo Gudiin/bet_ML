@@ -54,13 +54,15 @@ O sistema faz uma "votação ponderada" entre eles para chegar ao número final.
 
 Muitos iniciantes cometem o erro de misturar jogos de 2024 no treino e testar com jogos de 2023. Isso é **roubar**, pois você está usando o futuro para prever o passado.
 
-Nós usamos **TimeSeriesSplit**:
+Nós usamos **TimeSeriesSplit** (Cross-Validation Temporal):
 
 - Treinamos com Jan-Fev -> Testamos em Março.
 - Treinamos com Jan-Mar -> Testamos em Abril.
 - Treinamos com Jan-Abr -> Testamos em Maio.
 
-Isso simula o mundo real: a IA só sabe o que aconteceu _antes_ do jogo que ela está tentando prever. Além disso, nossas features usam janelas deslizantes (`shift(1)`) para garantir matematicamente que nenhum dado do jogo atual vaze para o treinamento.
+Isso simula o mundo real: a IA só sabe o que aconteceu _antes_ do jogo que ela está tentando prever. Além disso, nossas features usem janelas deslizantes (`shift(1)`) para garantir matematicamente que nenhum dado do jogo atual vaze para o treinamento.
+
+O modelo final é treinado com **todos** os dados disponíveis, mas sua performance reportada é a média desses testes no tempo.
 
 ---
 

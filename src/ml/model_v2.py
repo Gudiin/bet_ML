@@ -74,38 +74,34 @@ class ProfessionalPredictor:
         X: pd.DataFrame, 
         y: pd.Series, 
         timestamps: pd.Series,
-        test_size: float = 0.2
+        n_splits: int = 5
     ) -> dict:
         """
-        Treina respeitando o tempo (SEM SHUFFLE).
+        Treina usando TimeSeriesSplit (Cross-Validation Temporal).
         
-        Separa os últimos X% dos jogos (por data) para teste.
-        Isso simula a realidade: treinamos com o passado, testamos no futuro.
+        Em vez de um único split, usamos janelas deslizantes para validar
+        a robustez do modelo ao longo do tempo.
         
         Args:
             X: Features de entrada.
             y: Target (total de escanteios).
             timestamps: Datas dos jogos (para ordenação temporal).
-            test_size: Proporção de dados para teste (padrão: 20%).
+            n_splits: Número de divisões para validação (padrão: 5).
         
         Returns:
-            dict: Métricas de avaliação:
-                - mae_test: Mean Absolute Error no teste
-                - rmse_test: Root Mean Squared Error no teste
-                - win_rate: Taxa de acerto nas apostas simuladas
-                - roi: Retorno sobre investimento estimado
-        
-        Lógica:
-            1. Ordena TUDO por data (cronológico)
-            2. Corta em split_idx = 80% dos dados
-            3. Treina com [0:split_idx]
-            4. Testa com [split_idx:]
-            5. Nunca mistura futuro com passado
+            dict: Médias das métricas de avaliação em todos os splits:
+                - mae_test: Média do MAE
+                - rmse_test: Média do RMSE
+                - win_rate: Média da Taxa de acerto
+                - roi: Média do ROI
         
         Regra de Negócio:
-            Esta é a ÚNICA forma correta de treinar modelos de séries temporais.
-            Qualquer shuffle invalida as métricas.
+            Implementação da "Validação Temporal" descrita no README_ML.md.
+            Garante que o modelo é testado em múltiplos cenários futuros,
+            não apenas nos últimos 20% dos dados.
         """
+        from sklearn.model_selection import TimeSeriesSplit
+        
         # Garante que temos os nomes das features
         self.feature_names = X.columns.tolist()
         
@@ -113,66 +109,95 @@ class ProfessionalPredictor:
         df_full = pd.concat([X, y.rename('target'), timestamps.rename('timestamp')], axis=1)
         df_full = df_full.sort_values('timestamp').reset_index(drop=True)
         
-        # Calcula índice de corte temporal
-        split_idx = int(len(df_full) * (1 - test_size))
+        tscv = TimeSeriesSplit(n_splits=n_splits)
         
-        # Separa treino e teste
-        train_data = df_full.iloc[:split_idx]
-        test_data = df_full.iloc[split_idx:]
+        metrics_history = {
+            'mae': [],
+            'rmse': [],
+            'win_rate': [],
+            'roi': []
+        }
         
-        # Exibe informações do split
         print("\n" + "="*70)
-        print("🚀 TREINAMENTO PROFISSIONAL - VALIDAÇÃO TEMPORAL")
+        print(f"🚀 TREINAMENTO PROFISSIONAL - CROSS-VALIDATION TEMPORAL ({n_splits} SPLITS)")
         print("="*70)
-        print(f"📅 Período de Treino: {train_data['timestamp'].min()} até {train_data['timestamp'].max()}")
-        print(f"📅 Período de Teste:  {test_data['timestamp'].min()} até {test_data['timestamp'].max()}")
-        print(f"📊 Amostras Treino: {len(train_data)} | Teste: {len(test_data)}")
-        print(f"🎯 Target Médio - Treino: {train_data['target'].mean():.2f} | Teste: {test_data['target'].mean():.2f}")
+        
+        fold = 1
+        # O loop do TimeSeriesSplit garante que o índice de treino é sempre anterior ao de teste
+        for train_index, test_index in tscv.split(df_full):
+            train_data = df_full.iloc[train_index]
+            test_data = df_full.iloc[test_index]
+            
+            print(f"\n📂 FOLD {fold}/{n_splits}")
+            print(f"   📅 Treino: {train_data['timestamp'].min()} -> {train_data['timestamp'].max()} ({len(train_data)} jogos)")
+            print(f"   📅 Teste:  {test_data['timestamp'].min()} -> {test_data['timestamp'].max()} ({len(test_data)} jogos)")
+            
+            # Cria modelo novo para cada fold
+            model = lgb.LGBMRegressor(**self.default_params)
+            
+            model.fit(
+                train_data[self.feature_names], 
+                train_data['target'],
+                eval_set=[(test_data[self.feature_names], test_data['target'])],
+                eval_metric='mae',
+                callbacks=[
+                    lgb.early_stopping(stopping_rounds=50, verbose=False)
+                ]
+            )
+            
+            # Avaliação
+            preds = model.predict(test_data[self.feature_names])
+            mae = mean_absolute_error(test_data['target'], preds)
+            rmse = np.sqrt(mean_squared_error(test_data['target'], preds))
+            
+            # Simulação de Negócio
+            biz_metrics = self._evaluate_profitability(test_data['target'], preds, verbose=False)
+            
+            metrics_history['mae'].append(mae)
+            metrics_history['rmse'].append(rmse)
+            
+            # Só contabiliza Win Rate se houve apostas
+            if biz_metrics['total_bets'] > 0:
+                metrics_history['win_rate'].append(biz_metrics['win_rate'])
+                metrics_history['roi'].append(biz_metrics['roi'])
+            
+            print(f"   ✅ MAE: {mae:.4f} | Win Rate: {biz_metrics['win_rate']:.1%} | ROI: {biz_metrics['roi']:.2f}")
+            fold += 1
+            
+            # O último modelo treinado será o salvo (treinado com mais dados)
+            self.model = model
+
+        # Médias Finais
+        avg_mae = np.mean(metrics_history['mae'])
+        avg_rmse = np.mean(metrics_history['rmse'])
+        
+        # Média segura (evita divisão por zero se nunca apostou)
+        if metrics_history['win_rate']:
+            avg_win_rate = np.mean(metrics_history['win_rate'])
+            avg_roi = np.mean(metrics_history['roi'])
+        else:
+            avg_win_rate = 0.0
+            avg_roi = 0.0
+        
+        print("\n" + "="*70)
+        print("📊 RESULTADO FINAL (MÉDIA DOS FOLDS)")
+        print("="*70)
+        print(f"✅ MAE Médio: {avg_mae:.4f}")
+        print(f"✅ RMSE Médio: {avg_rmse:.4f}")
+        print(f"📈 Win Rate Médio: {avg_win_rate:.2%}")
+        print(f"💵 ROI Médio: {avg_roi:.2f} unidades")
         print("="*70 + "\n")
         
-        # Cria modelo
-        self.model = lgb.LGBMRegressor(**self.default_params)
-        
-        # Treina com early stopping
-        self.model.fit(
-            train_data[self.feature_names], 
-            train_data['target'],
-            eval_set=[(test_data[self.feature_names], test_data['target'])],
-            eval_metric='mae',
-            callbacks=[
-                lgb.early_stopping(stopping_rounds=50, verbose=False),
-                lgb.log_evaluation(period=100)
-            ]
-        )
-        
-        # Avaliação no Teste (Futuro Real)
-        print("\n" + "="*70)
-        print("📊 AVALIAÇÃO NO CONJUNTO DE TESTE (FUTURO)")
-        print("="*70)
-        
-        preds = self.model.predict(test_data[self.feature_names])
-        
-        # Métricas de Erro
-        mae = mean_absolute_error(test_data['target'], preds)
-        rmse = np.sqrt(mean_squared_error(test_data['target'], preds))
-        
-        print(f"✅ MAE (Mean Absolute Error):  {mae:.4f}")
-        print(f"✅ RMSE (Root Mean Squared Error): {rmse:.4f}")
-        
-        # Métricas de Negócio
-        business_metrics = self._evaluate_profitability(test_data['target'], preds)
-        
-        # Salva modelo
         self.save_model()
         
-        # Retorna todas as métricas
         return {
-            'mae_test': mae,
-            'rmse_test': rmse,
-            **business_metrics
+            'mae_test': avg_mae,
+            'rmse_test': avg_rmse,
+            'win_rate': avg_win_rate,
+            'roi': avg_roi
         }
     
-    def _evaluate_profitability(self, y_true: pd.Series, y_pred: np.ndarray) -> dict:
+    def _evaluate_profitability(self, y_true: pd.Series, y_pred: np.ndarray, verbose: bool = True) -> dict:
         """
         Simulação de lucro (Backtest).
         
@@ -184,6 +209,7 @@ class ProfessionalPredictor:
         Args:
             y_true: Valores reais de escanteios.
             y_pred: Previsões do modelo.
+            verbose: Se True, imprime relatório detalhado.
         
         Returns:
             dict: Métricas de negócio:
@@ -196,9 +222,10 @@ class ProfessionalPredictor:
             Um modelo com MAE alto mas Win Rate de 60% é melhor
             que um modelo com MAE baixo mas Win Rate de 48%.
         """
-        print("\n" + "="*70)
-        print("💰 SIMULAÇÃO FINANCEIRA (BACKTEST)")
-        print("="*70)
+        if verbose:
+            print("\n" + "="*70)
+            print("💰 SIMULAÇÃO FINANCEIRA (BACKTEST)")
+            print("="*70)
         
         hits = 0
         total_bets = 0
@@ -226,21 +253,22 @@ class ProfessionalPredictor:
             roi = (hits * avg_odd) - total_bets
             roi_percent = (roi / total_bets) * 100
             
-            print(f"🎯 Apostas Realizadas: {total_bets}")
-            print(f"✅ Apostas Certas (Green): {hits}")
-            print(f"❌ Apostas Erradas (Red): {total_bets - hits}")
-            print(f"📈 Win Rate: {win_rate:.2%}")
-            print(f"💵 ROI Estimado: {roi:+.2f} unidades ({roi_percent:+.1f}%)")
-            
-            # Análise de Viabilidade
-            if win_rate >= 0.55:
-                print(f"🟢 EXCELENTE! Win Rate acima de 55% é lucrativo a longo prazo.")
-            elif win_rate >= 0.52:
-                print(f"🟡 BOM. Win Rate entre 52-55% é sustentável com gestão de banca.")
-            else:
-                print(f"🔴 ATENÇÃO! Win Rate abaixo de 52% pode não ser lucrativo.")
-            
-            print("="*70 + "\n")
+            if verbose:
+                print(f"🎯 Apostas Realizadas: {total_bets}")
+                print(f"✅ Apostas Certas (Green): {hits}")
+                print(f"❌ Apostas Erradas (Red): {total_bets - hits}")
+                print(f"📈 Win Rate: {win_rate:.2%}")
+                print(f"💵 ROI Estimado: {roi:+.2f} unidades ({roi_percent:+.1f}%)")
+                
+                # Análise de Viabilidade
+                if win_rate >= 0.55:
+                    print(f"🟢 EXCELENTE! Win Rate acima de 55% é lucrativo a longo prazo.")
+                elif win_rate >= 0.52:
+                    print(f"🟡 BOM. Win Rate entre 52-55% é sustentável com gestão de banca.")
+                else:
+                    print(f"🔴 ATENÇÃO! Win Rate abaixo de 52% pode não ser lucrativo.")
+                
+                print("="*70 + "\n")
             
             return {
                 'total_bets': total_bets,
@@ -249,9 +277,10 @@ class ProfessionalPredictor:
                 'roi_percent': roi_percent
             }
         else:
-            print("⚠️ Nenhuma aposta encontrada com a margem de segurança.")
-            print("   Isso pode indicar que o modelo é muito conservador.")
-            print("="*70 + "\n")
+            if verbose:
+                print("⚠️ Nenhuma aposta encontrada com a margem de segurança.")
+                print("   Isso pode indicar que o modelo é muito conservador.")
+                print("="*70 + "\n")
             
             return {
                 'total_bets': 0,
