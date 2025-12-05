@@ -87,7 +87,136 @@ class StatisticalAnalyzer:
         """
         self.n_simulations = 10000
 
-
+    def calculate_hybrid_lambda(
+        self,
+        ia_prediction: float,
+        avg_corners_home_when_home: float,
+        avg_corners_away_when_away: float,
+        avg_corners_conceded_by_home: float,
+        avg_corners_conceded_by_away: float,
+        avg_corners_h2h_home: float = None,
+        avg_corners_h2h_away: float = None,
+        momentum_home: float = None,
+        momentum_away: float = None
+    ) -> tuple:
+        """
+        Calcula lambdas híbridos combinando previsão da IA com métricas avançadas.
+        
+        Esta função integra o melhor de dois mundos:
+        1. A inteligência da IA (padrões complexos aprendidos)
+        2. As métricas específicas de contexto (Casa/Fora, H2H, Defesa)
+        
+        Args:
+            ia_prediction: Previsão total da IA (ex: 9.7 escanteios)
+            avg_corners_home_when_home: Média do mandante jogando em casa
+            avg_corners_away_when_away: Média do visitante jogando fora
+            avg_corners_conceded_by_home: Escanteios cedidos pelo mandante em casa
+            avg_corners_conceded_by_away: Escanteios cedidos pelo visitante fora
+            avg_corners_h2h_home: Média H2H do mandante (opcional)
+            avg_corners_h2h_away: Média H2H do visitante (opcional)
+            momentum_home: Média geral recente do mandante (opcional)
+            momentum_away: Média geral recente do visitante (opcional)
+            
+        Returns:
+            tuple: (lambda_home, lambda_away) para uso nas simulações Monte Carlo
+            
+        Fórmula:
+            λ_home = W_IA * (IA * proporção_home) + 
+                     W_SPECIFIC * avg_corners_home_when_home +
+                     W_DEFENSE * avg_corners_conceded_by_away +
+                     W_H2H * avg_corners_h2h_home +
+                     W_MOMENTUM * momentum_home
+                     
+            Onde W_* são pesos que somam 1.0
+            
+        Regra de Negócio:
+            Os pesos foram calibrados para priorizar:
+            1. A previsão da IA (40%) - Captura padrões complexos
+            2. Performance específica Home/Away (25%) - Contexto do mando
+            3. Fraqueza defensiva do oponente (15%) - Oportunidade ofensiva
+            4. Histórico H2H (10%) - Padrão do confronto
+            5. Momentum geral (10%) - Forma atual do time
+        """
+        # Pesos para cada componente
+        W_IA = 0.40
+        W_SPECIFIC = 0.25
+        W_DEFENSE = 0.15
+        W_H2H = 0.10
+        W_MOMENTUM = 0.10
+        
+        # Proporção histórica para dividir a previsão da IA
+        total_specific = avg_corners_home_when_home + avg_corners_away_when_away
+        if total_specific > 0:
+            prop_home = avg_corners_home_when_home / total_specific
+        else:
+            prop_home = 0.5  # Fallback: divisão igual
+            
+        # Componente 1: IA (ajustada pela proporção)
+        ia_home = ia_prediction * prop_home
+        ia_away = ia_prediction * (1 - prop_home)
+        
+        # Componente 2: Específico (Home when Home, Away when Away)
+        specific_home = avg_corners_home_when_home
+        specific_away = avg_corners_away_when_away
+        
+        # Componente 3: Defesa (Oportunidade ofensiva = Fraqueza defensiva do oponente)
+        defense_home = avg_corners_conceded_by_away  # Mandante ataca fraqueza do visitante
+        defense_away = avg_corners_conceded_by_home  # Visitante ataca fraqueza do mandante
+        
+        # Componente 4: H2H (usa específico como fallback se não tiver H2H)
+        h2h_home = avg_corners_h2h_home if avg_corners_h2h_home is not None else specific_home
+        h2h_away = avg_corners_h2h_away if avg_corners_h2h_away is not None else specific_away
+        
+        # Componente 5: Momentum (usa específico como fallback)
+        mom_home = momentum_home if momentum_home is not None else specific_home
+        mom_away = momentum_away if momentum_away is not None else specific_away
+        
+        # Cálculo final do Lambda Híbrido
+        lambda_home = (
+            W_IA * ia_home +
+            W_SPECIFIC * specific_home +
+            W_DEFENSE * defense_home +
+            W_H2H * h2h_home +
+            W_MOMENTUM * mom_home
+        )
+        
+        lambda_away = (
+            W_IA * ia_away +
+            W_SPECIFIC * specific_away +
+            W_DEFENSE * defense_away +
+            W_H2H * h2h_away +
+            W_MOMENTUM * mom_away
+        )
+        
+        # Log detalhado para transparência
+        # Mostra cada componente do cálculo para facilitar a compreensão
+        print(f"\n{Colors.YELLOW}{'='*70}")
+        print(f"🧮 LAMBDA HÍBRIDO (IA + Métricas Avançadas)")
+        print(f"{'='*70}{Colors.RESET}")
+        print(f"📊 Previsão IA Total: {ia_prediction:.2f} escanteios")
+        print(f"")
+        
+        # Mandante detalhado
+        print(f"{Colors.GREEN}🏠 MANDANTE (λ = {lambda_home:.2f}){Colors.RESET}")
+        print(f"   ├─ IA ({int(W_IA*100)}%):       {ia_home:.2f}  ← Previsão da IA para o mandante")
+        print(f"   ├─ Casa ({int(W_SPECIFIC*100)}%):    {specific_home:.2f}  ← Média de escanteios jogando EM CASA")
+        print(f"   ├─ Def. Adv ({int(W_DEFENSE*100)}%): {defense_home:.2f}  ← Escanteios que o visitante CEDE fora")
+        print(f"   ├─ H2H ({int(W_H2H*100)}%):      {h2h_home:.2f}  ← Média nos confrontos diretos")
+        print(f"   └─ Momentum ({int(W_MOMENTUM*100)}%): {mom_home:.2f}  ← Forma recente geral")
+        print(f"")
+        
+        # Visitante detalhado
+        print(f"{Colors.CYAN}✈️ VISITANTE (λ = {lambda_away:.2f}){Colors.RESET}")
+        print(f"   ├─ IA ({int(W_IA*100)}%):       {ia_away:.2f}  ← Previsão da IA para o visitante")
+        print(f"   ├─ Fora ({int(W_SPECIFIC*100)}%):    {specific_away:.2f}  ← Média de escanteios jogando FORA")
+        print(f"   ├─ Def. Adv ({int(W_DEFENSE*100)}%): {defense_away:.2f}  ← Escanteios que o mandante CEDE em casa")
+        print(f"   ├─ H2H ({int(W_H2H*100)}%):      {h2h_away:.2f}  ← Média nos confrontos diretos")
+        print(f"   └─ Momentum ({int(W_MOMENTUM*100)}%): {mom_away:.2f}  ← Forma recente geral")
+        print(f"")
+        print(f"{Colors.BOLD}🎯 TOTAL ESPERADO: {lambda_home + lambda_away:.2f} escanteios{Colors.RESET}")
+        print(f"{Colors.YELLOW}{'='*70}{Colors.RESET}")
+        
+        return lambda_home, lambda_away
 
     def _get_distribution_params(self, data: pd.Series) -> tuple:
         """
@@ -277,7 +406,8 @@ class StatisticalAnalyzer:
         return suggestions
 
     def analyze_match(self, df_home: pd.DataFrame, df_away: pd.DataFrame, 
-                     ml_prediction: float = None, match_name: str = None) -> tuple:
+                     ml_prediction: float = None, match_name: str = None,
+                     advanced_metrics: dict = None) -> tuple:
         """
         Executa análise estatística completa de uma partida.
         
@@ -290,7 +420,17 @@ class StatisticalAnalyzer:
             df_away: DataFrame com histórico do visitante.
                     Colunas: corners_ft, corners_ht, corners_2t, shots_ht
             ml_prediction: Previsão do modelo ML para alinhamento.
-            match_name: Nome da partida para exibição (ex: "Flamengo vs Palmeiras").
+            match_name: Nome da partida para exibição (ex: \"Flamengo vs Palmeiras\").
+            advanced_metrics: Dicionário com métricas avançadas da IA (opcional).
+                    Keys esperadas:
+                    - home_avg_corners_home: Média mandante em casa
+                    - away_avg_corners_away: Média visitante fora
+                    - home_avg_corners_conceded_home: Escanteios cedidos mandante em casa
+                    - away_avg_corners_conceded_away: Escanteios cedidos visitante fora
+                    - home_avg_corners_h2h: Média H2H mandante
+                    - away_avg_corners_h2h: Média H2H visitante
+                    - home_avg_corners_general: Momentum mandante
+                    - away_avg_corners_general: Momentum visitante
         
         Returns:
             list: Top 7 oportunidades ordenadas por Score:
@@ -365,37 +505,45 @@ class StatisticalAnalyzer:
         dist_h, mean_h, var_h = self._get_distribution_params(h_corners_ft)
         dist_a, mean_a, var_a = self._get_distribution_params(a_corners_ft)
         
-        # Lógica de Integração IA + Estatística (Melhoria Nível 1)
-        # Se tivermos previsão da IA, ajustamos as médias (lambdas) para alinhar com a IA
-        if ml_prediction is not None and ml_prediction > 0:
+        # Lógica de Integração IA + Estatística (NÍVEL 2 - HÍBRIDO)
+        # ------------------------------------------------------------
+        # Agora usamos as 5 métricas avançadas + previsão da IA para calcular lambdas
+        
+        if advanced_metrics is not None and ml_prediction is not None and ml_prediction > 0:
+            # 🚀 MODO HÍBRIDO: Usa as métricas avançadas da feature engineering
+            mean_h, mean_a = self.calculate_hybrid_lambda(
+                ia_prediction=ml_prediction,
+                avg_corners_home_when_home=advanced_metrics.get('home_avg_corners_home', mean_h),
+                avg_corners_away_when_away=advanced_metrics.get('away_avg_corners_away', mean_a),
+                avg_corners_conceded_by_home=advanced_metrics.get('home_avg_corners_conceded_home', mean_h),
+                avg_corners_conceded_by_away=advanced_metrics.get('away_avg_corners_conceded_away', mean_a),
+                avg_corners_h2h_home=advanced_metrics.get('home_avg_corners_h2h'),
+                avg_corners_h2h_away=advanced_metrics.get('away_avg_corners_h2h'),
+                momentum_home=advanced_metrics.get('home_avg_corners_general'),
+                momentum_away=advanced_metrics.get('away_avg_corners_general')
+            )
+            
+        elif ml_prediction is not None and ml_prediction > 0:
+            # 🤖 MODO LEGADO: Apenas IA, sem métricas avançadas
             historical_avg = mean_h + mean_a
             if historical_avg > 0:
-                # 🛡️ CLAMPER: Segurança contra Alucinação do ML
-                # Não permite que ML desvie mais de 30% da média histórica
-                # Isso protege contra erros de feature ou bugs no modelo
-                max_deviation = 0.30  # 30% de margem
+                # Clamper de segurança
+                max_deviation = 0.30
                 lower_bound = historical_avg * (1 - max_deviation)
                 upper_bound = historical_avg * (1 + max_deviation)
                 
-                # Clamp (limita) a previsão do ML
                 ml_prediction_clamped = np.clip(ml_prediction, lower_bound, upper_bound)
                 
-                # Se houve clamp, avisa o usuário
                 if ml_prediction_clamped != ml_prediction:
                     print(f"{Colors.RED}⚠️ CLAMPER ATIVADO!{Colors.RESET}")
                     print(f"   ML original: {ml_prediction:.2f} → Ajustado: {ml_prediction_clamped:.2f}")
-                    print(f"   Limite: [{lower_bound:.2f}, {upper_bound:.2f}] (±30% de {historical_avg:.2f})")
                 
-                # Mantém a proporção histórica entre os times
                 prop_h = mean_h / historical_avg
-                
-                # Novos lambdas baseados na IA (clamped)
                 mean_h = ml_prediction_clamped * prop_h
                 mean_a = ml_prediction_clamped * (1 - prop_h)
                 
-                print(f"{Colors.YELLOW}🤖 Usando Previsão ML ({ml_prediction_clamped:.2f}) como base para Monte Carlo{Colors.RESET}")
+                print(f"{Colors.YELLOW}🤖 Usando Previsão ML (Legado): {ml_prediction_clamped:.2f}{Colors.RESET}")
             else:
-                # Fallback se histórico for zero (improvável)
                 mean_h = ml_prediction / 2
                 mean_a = ml_prediction / 2
         else:

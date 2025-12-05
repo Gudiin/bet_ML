@@ -311,7 +311,7 @@ class SofaScoreScraper:
         return stats
 
     def get_match_details(self, match_id: int) -> dict:
-        """Busca detalhes completos de uma partida."""
+        """Busca detalhes completos de uma partida incluindo minuto do jogo."""
         url = f"https://www.sofascore.com/api/v1/event/{match_id}"
         data = self._fetch_api(url)
         
@@ -319,12 +319,25 @@ class SofaScoreScraper:
             return None
             
         ev = data['event']
+        
+        # Extract match minute for live matches
+        status_info = ev.get('status', {})
+        match_minute = None
+        status_description = status_info.get('description', '')
+        
+        # Get minute from status description (e.g., "45+2", "HT", "78")
+        if status_info.get('type') == 'inprogress':
+            match_minute = status_description if status_description else None
+        
         return {
             'id': ev['id'],
             'tournament': ev.get('tournament', {}).get('name', 'Unknown'),
+            'tournament_id': ev.get('tournament', {}).get('uniqueTournament', {}).get('id', 0),
             'season_id': ev.get('season', {}).get('id', 0),
             'round': ev.get('roundInfo', {}).get('round', 0),
-            'status': ev.get('status', {}).get('type', 'unknown'),
+            'status': status_info.get('type', 'unknown'),
+            'status_description': status_description,
+            'match_minute': match_minute,
             'timestamp': ev.get('startTimestamp', 0),
             'home_id': ev['homeTeam']['id'],
             'home_name': ev['homeTeam']['name'],

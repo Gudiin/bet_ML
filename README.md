@@ -1,145 +1,103 @@
-# ⚽ Sistema de Previsão de Escanteios com Inteligência Artificial
+# 🤖 Sistema de Previsão de Escanteios (Professional V2)
 
-> **"Como se fosse a previsão do tempo, mas para o mercado de escanteios no futebol."**
+> **Versão 2.0 - "The Vectorized Update"** > _Performance Extrema, Lógica Financeira Real e Anti-Leakage._
 
-Seja bem-vindo! Se você está começando agora no mundo da programação ou das apostas esportivas, este guia foi feito para você. Aqui explicamos **o que** este projeto faz, **por que** ele existe e **como** ele funciona, tudo de forma simples e direta.
-
----
-
-## 🧐 O Que é Este Projeto?
-
-Imagine que você quer saber se vai chover amanhã. Você pode:
-
-1.  **Olhar para o céu** (Intuição).
-2.  **Consultar a meteorologia**, que usa satélites e computadores para analisar nuvens, vento e temperatura (Ciência de Dados).
-
-Este projeto é a **meteorologia do futebol**.
-
-Em vez de prever chuva, ele prevê **escanteios**. Ele usa dados históricos, estatística e inteligência artificial para responder a uma pergunta simples:
-
-> _"Neste jogo entre Time A e Time B, vão sair muitos ou poucos escanteios?"_
+Este projeto é um sistema completo de Machine Learning para previsão de escanteios em futebol, focado em encontrar apostas de valor (+EV) usando dados históricos e estatísticas avançadas.
 
 ---
 
-## 💰 Qual o Problema que Ele Resolve? (Regra de Negócio)
+## 🚀 O Que Há de Novo? (V2)
 
-No mundo das apostas esportivas, as casas de apostas (como a Bet365) definem uma "linha" para cada jogo. Por exemplo: **10.5 escanteios**.
+Esta versão traz uma reformulação completa do núcleo de inteligência artificial:
 
-- Se você acha que vai ter **11 ou mais**, você aposta no **Over** (Mais de).
-- Se você acha que vai ter **10 ou menos**, você aposta no **Under** (Menos de).
-
-O problema é: **Como saber quem tem razão? Você ou a casa de apostas?**
-
-As casas de apostas são muito boas em definir essas linhas. Para ganhar dinheiro a longo prazo, você precisa encontrar as **"Value Bets"** (Apostas de Valor). Uma Value Bet acontece quando a **sua** chance de ganhar é maior do que o preço (Odd) que a casa está pagando.
-
-**Este sistema serve para encontrar essas agulhas no palheiro.** Ele analisa milhares de dados para calcular a **probabilidade real** de um evento acontecer. Se a nossa probabilidade for maior que a da casa, temos uma oportunidade!
+- **⚡ Feature Engineering Vetorizado**: Processamento de dados >100x mais rápido usando operações vetoriais do Pandas.
+- **💰 Lógica Financeira Real**: Cálculo de ROI baseado em Odds Reais e Probabilidade de Poisson (não mais odds fixas).
+- **🛡️ Anti-Data Leakage**: Validação temporal rigorosa (`TimeSeriesSplit`) garante que o modelo nunca veja o futuro.
+- **🧠 Inteligência de Liga**: O modelo agora entende o contexto do campeonato (`tournament_id`), diferenciando Premier League de Série B.
+- **⚖️ Monte Carlo "Clamper"**: Proteção estatística que impede alucinações do modelo de contaminarem as simulações.
 
 ---
 
-## 🏗️ Como Funciona? (Visão Geral)
+## 🛠️ Arquitetura
 
-O sistema funciona como uma fábrica de decisões com 4 departamentos principais que conversam entre si:
+O sistema é dividido em três pilares principais:
 
-### 1. O Olheiro (Coleta de Dados / Scraping) 🕵️‍♂️
+1.  **Coleta de Dados (Scraper)**:
 
-- **Função**: Vai até o site do SofaScore e assiste aos replays dos jogos passados.
-- **O que anota**: Chutes, ataques perigosos, posse de bola, e claro, escanteios.
-- **Resultado**: Um banco de dados gigante com o histórico de cada time.
+    - Automação via Selenium para extrair dados do SofaScore.
+    - Armazenamento em SQLite (`football_data.db`).
 
-### 2. O Estudante (Machine Learning / IA) 🧠
+2.  **Inteligência Artificial (Machine Learning)**:
 
-- **Função**: Pega esse caderno de anotações e estuda os padrões.
-- **O que aprende**: _"Quando o Time A joga em casa e chuta muito, costumam sair 12 escanteios"_.
-- **Tecnologia**: Usa algoritmos avançados (LightGBM, XGBoost) para prever o número exato de escanteios do próximo jogo.
+    - **Modelo**: LightGBM Regressor (Objective: Poisson).
+    - **Features**: Médias móveis (3/5 jogos), Tendências, Força Relativa, Confronto Direto.
+    - **Validação**: Cross-Validation Temporal (respeita a ordem cronológica).
 
-### 3. O Matemático (Estatística e Monte Carlo) 🎲
-
-- **Função**: Testa a previsão do Estudante contra a sorte.
-- **O que faz**: Simula a partida virtualmente **10.000 vezes** usando distribuições matemáticas (Poisson).
-- **Resultado**: Uma probabilidade confiável. _"Em 85% das simulações, saíram mais de 9 escanteios"_.
-
-### 4. O Juiz (Mecanismos de Segurança) ⚖️
-
-- **Função**: Garante que ninguém está alucinando.
-- **Regra do Clamper**: Se a IA prever algo muito absurdo (ex: 20 escanteios num jogo que a média é 10), o Juiz bloqueia e ajusta a previsão para um valor realista (máximo 30% de desvio da média).
-- **Filtro Direcional**: Se a IA diz "Muitos Escanteios", o sistema proíbe apostar em "Poucos". Isso evita contradições.
-
-### 5. O Consultor (Interface Web) 💻
-
-- **Função**: Junta tudo isso e te mostra numa tela bonita.
-- **Entrega**: _"Olha, a IA prevê um jogo movimentado, a estatística confirma com 85% de chance e o risco é baixo. É uma boa aposta!"_
+3.  **Análise Estatística (Monte Carlo)**:
+    - Simula cada jogo 10.000 vezes.
+    - Combina a previsão da IA com a variância histórica dos times.
+    - Gera probabilidades para mercados de Over/Under.
 
 ---
 
-## 🚀 Como Usar (Guia Rápido)
+## 📦 Instalação
 
-### 1. Instalação
+1.  **Clone o repositório**:
 
-Primeiro, precisamos preparar o terreno (instalar as ferramentas). No seu terminal:
+    ```bash
+    git clone https://github.com/seu-usuario/projeto-bet.git
+    cd projeto-bet
+    ```
 
-```bash
-# Instala as bibliotecas necessárias (os "ingredientes" do bolo)
-pip install -r requirements.txt
+2.  **Instale as dependências**:
 
-# Instala o navegador que o robô vai usar
-playwright install
-```
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-### 2. Coletando Dados
+3.  **Configure o Driver**:
+    - Certifique-se de ter o Google Chrome instalado.
+    - O `webdriver-manager` gerencia o driver automaticamente.
 
-O sistema precisa de dados para aprender. Vamos mandar o robô trabalhar:
+---
+
+## 🎮 Como Usar
+
+Execute o menu principal:
 
 ```bash
 python src/main.py
 ```
 
-_Escolha a opção **1** para atualizar o banco de dados._
+### Opções do Menu:
 
-### 3. Treinando a IA
-
-Agora que temos dados, vamos ensinar o cérebro do sistema:
-
-```bash
-python src/main.py
-```
-
-_Escolha a opção **2** para treinar o modelo._
-
-### 4. Usando o Sistema (Interface Web)
-
-A parte divertida! Vamos ver as previsões:
-
-```bash
-python run_web.py
-```
-
-_Abra o navegador no endereço que aparecer (geralmente `http://localhost:5000`)._
-
-_Abra o navegador no endereço que aparecer (geralmente `http://localhost:5000`)._
-
-### 5. Scanner de Oportunidades (Automático) 🆕
-
-Quer analisar **todos** os jogos do dia de uma vez?
-
-```bash
-python src/main.py
-```
-
-_Escolha a opção **7**. O sistema vai buscar todos os jogos, analisar um por um e gerar um relatório com as melhores oportunidades (Confiança > 70%)._
+1.  **Atualizar Campeonato**: Baixa dados recentes do Brasileirão (ou outras ligas).
+2.  **Treinar Modelo de IA**:
+    - Escolha a **Opção 2 (Profissional V2)** para usar a nova arquitetura.
+3.  **Analisar Jogo (URL)**: Cole o link de uma partida do SofaScore para receber previsões.
+4.  **Consultar Análise (ID)**: Vê detalhes de uma análise já feita.
+5.  **Atualizar Liga Específica**: Baixa histórico de 3 anos de ligas europeias.
 
 ---
 
-## 📂 Onde Está Cada Coisa?
+## 📊 Métricas e Performance
 
-Para você não se perder nos arquivos:
+O modelo é avaliado não apenas por erro estatístico (MAE), mas por **lucratividade**:
 
-- `src/scrapers/`: Onde mora o **Olheiro** (código que acessa a internet).
-- `src/database/`: O **Caderno** (onde salvamos os dados).
-- `src/ml/`: O **Estudante** (cérebro da Inteligência Artificial).
-- `src/analysis/`: O **Matemático** (cálculos estatísticos e simulações).
-- `src/web/`: O **Consultor** (site que você vê).
+- **Win Rate**: Taxa de acerto das apostas sugeridas.
+- **ROI (Return on Investment)**: Retorno financeiro sobre o capital investido.
+- **EV (Expected Value)**: O modelo só sugere apostas onde a probabilidade calculada supera a probabilidade implícita na odd.
 
 ---
 
-> **Quer saber os detalhes técnicos?**
-> Leia o arquivo `README_ML.md` para uma explicação profunda sobre como a mágica acontece por baixo dos panos!
+## 📝 Estrutura de Pastas
+
+- `src/ml/`: Núcleo de Machine Learning (`features_v2.py`, `model_v2.py`).
+- `src/analysis/`: Motor estatístico (`statistical.py`).
+- `src/scrapers/`: Robôs de coleta de dados.
+- `src/database/`: Gerenciamento do SQLite.
+- `src/web/`: Interface Web (Flask).
+
+---
+
+> **Aviso**: Apostas esportivas envolvem risco financeiro. Este software é uma ferramenta de apoio à decisão e não garante lucros.

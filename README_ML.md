@@ -1,162 +1,90 @@
-# 🧠 Manual Técnico: A Inteligência por Trás do Sistema
+# 🧠 Documentação Técnica: Machine Learning (V2)
 
-> **"O segredo não é a mágica, é saber como o truque é feito."**
-
-Se no `README.md` explicamos _o que_ o sistema faz, aqui vamos explicar **como** ele faz. Vamos abrir o capô e entender as engrenagens de Dados, Estatística e Inteligência Artificial.
+Este documento detalha a engenharia e a matemática por trás do **Professional Predictor V2**, o cérebro do nosso sistema de previsões.
 
 ---
 
-## 1. Coleta de Dados (Data Collection) 🕵️‍♂️
+## 1. O Problema: Previsão de Escanteios
 
-Tudo começa com dados. Sem dados, não há inteligência.
+Escanteios são eventos de contagem (números inteiros não-negativos: 0, 1, 2...).
 
-### Onde buscamos?
-
-Usamos o **SofaScore**. É um dos maiores sites de estatísticas esportivas do mundo. Escolhemos ele porque fornece dados detalhados que outros sites não têm, como "Ataques Perigosos" e "Chutes Bloqueados".
-
-### Como buscamos? (Web Scraping)
-
-Não existe um botão "Baixar Dados" no site. Então, criamos um robô (script Python) que finge ser um usuário navegando.
-
-- **Ferramenta**: Usamos o `Playwright`. Ele abre um navegador invisível (headless), clica nos jogos e copia os números.
-- **Desafio**: O site tenta bloquear robôs. Para evitar isso, nosso robô "descansa" um pouco entre cada clique (rate limiting), agindo como um humano.
+- **Erro Comum**: Tratar como regressão normal (Gaussiana), que assume distribuição simétrica e números contínuos.
+- **Solução V2**: Usamos **Regressão de Poisson**, ideal para modelar a taxa de ocorrência de eventos raros em um intervalo de tempo.
 
 ---
 
-## 2. Pré-processamento (Data Cleaning) 🧹
+## 2. Pipeline de Dados (Feature Engineering)
 
-Os dados brutos vêm "sujos". O computador não entende "10 escanteios". Ele precisa de números organizados.
+O arquivo `src/ml/features_v2.py` é responsável por transformar dados brutos de partidas em sinais matemáticos para o modelo.
 
-### O que fazemos?
+### ⚡ A Revolução Vetorizada
 
-1.  **Limpeza**: Removemos jogos cancelados ou sem estatísticas.
-2.  **Engenharia de Atributos (Feature Engineering)**: Criamos novas informações a partir das básicas.
-    - _Exemplo_: O site diz que o Time A teve 5 escanteios e o Time B teve 3. Nós calculamos a **Média Móvel** dos últimos 5 jogos.
-    - **Por que Média Móvel?** Porque o desempenho recente importa mais do que o desempenho de 3 meses atrás. Um time pode ter melhorado ou piorado.
+Antigamente, iterávamos jogo a jogo (loop `for`), o que era lento. Agora, usamos **Vetorização do Pandas**:
 
----
+1.  **Team-Centric View**: Duplicamos o dataset para ter uma linha por time, não por jogo.
+2.  **GroupBy + Shift**: Agrupamos por time e deslocamos os dados 1 linha para baixo.
+    - _Por que?_ Para garantir que a feature do jogo atual use apenas dados dos jogos **anteriores**. Isso elimina o **Data Leakage**.
+3.  **Rolling Windows**: Calculamos médias móveis em janelas deslizantes.
 
-## 3. Inteligência Artificial (Machine Learning) 🤖
+### As Features (Variáveis)
 
-Aqui é onde o computador "aprende". Utilizamos uma abordagem de **Ensemble** (união de forças).
+O modelo aprende com:
 
-### Os Modelos
-
-Em vez de confiar em apenas um "especialista", usamos três:
-
-1.  **LightGBM** (Principal): Extremamente rápido e preciso para dados tabulares.
-2.  **XGBoost**: Robusto e excelente para capturar relações não-lineares.
-3.  **Random Forest**: O clássico, bom para evitar overfitting.
-
-O sistema faz uma "votação ponderada" entre eles para chegar ao número final.
-
-### Validação Temporal (O Segredo do Sucesso) ⏳
-
-Muitos iniciantes cometem o erro de misturar jogos de 2024 no treino e testar com jogos de 2023. Isso é **roubar**, pois você está usando o futuro para prever o passado.
-
-Nós usamos **TimeSeriesSplit** (Cross-Validation Temporal):
-
-- Treinamos com Jan-Fev -> Testamos em Março.
-- Treinamos com Jan-Mar -> Testamos em Abril.
-- Treinamos com Jan-Abr -> Testamos em Maio.
-
-Isso simula o mundo real: a IA só sabe o que aconteceu _antes_ do jogo que ela está tentando prever. Além disso, nossas features usem janelas deslizantes (`shift(1)`) para garantir matematicamente que nenhum dado do jogo atual vaze para o treinamento.
-
-O modelo final é treinado com **todos** os dados disponíveis, mas sua performance reportada é a média desses testes no tempo.
+- **Médias Móveis (3 e 5 jogos)**: Escanteios, Chutes, Gols.
+- **Tendência (Trend)**: Diferença entre média curta (3j) e longa (5j). Indica se o time está melhorando ou piorando.
+- **Força Relativa**: Diferença entre a média de escanteios do Mandante e do Visitante.
+- **Contexto da Liga (`tournament_id`)**: O modelo aprende que a média de escanteios na Premier League é diferente do Brasileirão Série B.
 
 ---
 
-## 4. Análise Estatística (O Motor Matemático) 🎲
+## 3. O Modelo (LightGBM)
 
-A IA nos dá um número (ex: "Vai ter 10.5 escanteios"). Mas futebol é caótico. Para modelar esse caos, usamos Distribuições de Probabilidade.
+Usamos o **LightGBM**, um algoritmo de Gradient Boosting (árvores de decisão) extremamente rápido e eficiente.
 
-### Poisson vs. Binomial Negativa
-
-O sistema é inteligente o suficiente para escolher qual matemática usar:
-
-1.  **Poisson**: Usada quando o time é consistente (Média ≈ Variância). É o padrão para contagem de gols/escanteios.
-2.  **Binomial Negativa**: Usada quando o time é "louco" (Variância > Média). Se um time faz 2 escanteios num jogo e 15 no outro, a Poisson falha. A Binomial Negativa captura essa **Overdispersion** (dispersão exagerada) e ajusta o risco.
-
-### Simulação de Monte Carlo
-
-Com a distribuição escolhida, ligamos a "máquina do tempo":
-
-1.  Pegamos a média prevista (ajustada pela IA).
-2.  Simulamos a partida virtualmente **10.000 vezes**.
-3.  Contamos quantas vezes cada resultado aconteceu.
-
-Isso cria uma **Curva de Probabilidade Real** que considera tanto a habilidade do time quanto a sorte.
+- **Objective**: `poisson` (Otimiza a verossimilhança de Poisson).
+- **Métrica**: `mae` (Erro Médio Absoluto) para monitoramento, mas o foco real é o ROI.
 
 ---
 
-## 5. O "Aperto de Mão" (Integração IA + Estatística) 🤝
+## 4. Validação Temporal (Time Series Split)
 
-Aqui está a mágica de como os cálculos "conversam entre si". Não usamos a IA sozinha, nem a Estatística sozinha.
+Em séries temporais (futebol), não podemos embaralhar os dados (`shuffle=True`). Se fizermos isso, o modelo aprenderá com jogos de 2025 para prever jogos de 2024 (trapaça!).
 
-### O Fluxo da Verdade:
+**Como fazemos na V2 (`model_v2.py`):**
+Usamos `TimeSeriesSplit`. O treino cresce progressivamente:
 
-1.  **IA Propõe**: "Acho que teremos 11.0 escanteios baseados na tática dos times."
-2.  **Clamper (O Juiz) Verifica**:
-    - O sistema olha a média histórica (ex: 9.0).
-    - Calcula o limite aceitável (ex: ±30% = 6.3 a 11.7).
-    - Se a IA dissesse 15.0, o Clamper reduziria para 11.7.
-    - _Isso impede que um erro da IA quebre a banca._
-3.  **Estatística Executa**:
-    - O valor validado (11.0) vira o parâmetro `lambda` da distribuição de Poisson/Binomial.
-    - As 10.000 simulações são rodadas usando esse novo centro de gravidade.
+- Split 1: Treina (Jan-Mar) -> Testa (Abr)
+- Split 2: Treina (Jan-Abr) -> Testa (Mai)
+- Split 3: Treina (Jan-Mai) -> Testa (Jun)
 
-**Resultado**: Temos a precisão tática da IA, mas com a segurança matemática e as margens de erro da Estatística. Se a IA estiver otimista demais, o Clamper segura. Se a Estatística for conservadora demais, a IA puxa para cima. É o equilíbrio perfeito.
+Isso simula o cenário real de produção.
 
 ---
 
-## 6. Geração de Saídas (Odds e Probabilidades) 📊
+## 5. Matemática Financeira (+EV)
 
-Finalmente, transformamos isso em dinheiro (ou potencial de).
+Não basta acertar a média de escanteios. Precisamos saber se a aposta vale a pena.
 
-### Probabilidade Real vs. Odd Justa
+### Probabilidade Real (Poisson)
 
-- **Probabilidade Real**: É a chance que calculamos (ex: 50% ou 0.50).
-- **Odd Justa**: É o inverso da probabilidade.
-  $$ Odd = \frac{1}{Probabilidade} $$
-  - Se a chance é 50% (0.50), a Odd Justa é $1 / 0.50 = 2.00$.
+O modelo prevê o **Lambda (λ)**, que é a média esperada de escanteios.
+Para saber a probabilidade de sair **Mais de 9.5 escanteios** (Over 9.5), usamos a função de sobrevivência de Poisson:
 
-### Value Bet (Aposta de Valor)
+$$ P(X > 9.5) = \text{poisson.sf}(9, \lambda) $$
 
-Comparamos a nossa **Odd Justa** com a **Odd da Casa de Apostas**.
+### Valor Esperado (EV)
 
-- Nossa Odd Justa: **1.50** (Achamos que é muito provável).
-- Odd da Bet365: **2.00** (Eles acham que é difícil).
+Calculamos o Valor Esperado de cada aposta:
 
-Isso é uma **Value Bet**! Estamos comprando uma nota de 100 reais pagando 50. A longo prazo, a matemática garante o lucro.
+$$ EV = (Probabilidade \times Odd) - 1 $$
 
-Isso é uma **Value Bet**! Estamos comprando uma nota de 100 reais pagando 50. A longo prazo, a matemática garante o lucro.
+Se $EV > 0.05$ (5%), o sistema sugere a aposta. Isso garante lucratividade a longo prazo, filtrando apostas onde o risco não compensa o retorno.
 
 ---
 
-## 7. Scanner de Oportunidades (Automação em Lote) 🚀
+## 6. O "Clamper" (Segurança)
 
-O **Scanner** é a evolução do sistema. Em vez de analisar um jogo por vez, ele analisa o dia inteiro.
+Para evitar que um erro do modelo (ex: prever 25 escanteios) quebre a banca, implementamos um **Limitador** na simulação de Monte Carlo.
 
-### Como funciona?
-
-1.  **Busca em Lote**: O Scraper vai ao calendário do SofaScore e baixa a lista de todos os jogos do dia (ex: 50 jogos).
-2.  **Filtro de Ligas**: Ignoramos ligas obscuras (ex: 3ª divisão do Vietnã) para focar onde temos dados confiáveis.
-3.  **Processamento Paralelo (Simulado)**: O sistema itera sobre cada jogo, aplica o modelo de IA e calcula a confiança.
-4.  **Ranking de Oportunidades**:
-    - Se a confiança da IA for **< 70%**, o jogo é descartado.
-    - Se for **> 70%**, entra no relatório.
-    - O relatório é ordenado: as melhores oportunidades aparecem no topo.
-
-Isso transforma o sistema de uma ferramenta passiva ("O que você acha desse jogo?") em uma ferramenta ativa ("Quais são os melhores jogos de hoje?").
-
----
-
-## Resumo da Ópera
-
-1.  **Coletamos** o passado.
-2.  **Limpamos** a sujeira.
-3.  **A IA prevê** o futuro baseada em padrões.
-4.  **Monte Carlo simula** os riscos.
-5.  **Filtramos** as loucuras.
-6.  **Calculamos** o preço justo.
-7.  **Encontramos** o lucro.
+- A previsão da IA nunca pode desviar mais de **30%** da média histórica dos times.
+- Isso cria um sistema híbrido: **Inteligência da IA + Segurança da Estatística Clássica**.

@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetML Pro | Intelligence System</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-body: #0f1116;
+            --bg-panel: #161b22;
+            --bg-input: #0d1117;
+            --accent-primary: #3b82f6; /* Blue 500 */
+            --accent-success: #10b981; /* Emerald 500 */
+            --accent-warning: #f59e0b; /* Amber 500 */
+            --accent-danger: #ef4444; /* Red 500 */
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border-color: #30363d;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            padding-bottom: 60px; /* Espaço para o console drawer */
+        }
+
+        /* --- Components --- */
+        .glass-panel {
+            background: rgba(22, 27, 34, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .navbar {
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 1.5rem;
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            font-size: 1.25rem;
+        }
+
+        .nav-pills .nav-link {
+            color: var(--text-muted);
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .nav-pills .nav-link.active {
+            background-color: var(--accent-primary);
+            color: white;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+        }
+
+        /* --- Status Indicators --- */
+        .status-dot {
+            height: 10px;
+            width: 10px;
+            background-color: var(--text-muted);
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+        .status-dot.active {
+            background-color: var(--accent-success);
+            box-shadow: 0 0 8px var(--accent-success);
+            animation: pulse 2s infinite;
+        }
+        .status-dot.vigilante {
+            background-color: var(--accent-warning);
+            box-shadow: 0 0 8px var(--accent-warning);
+            animation: pulse-fast 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        @keyframes pulse-fast {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* --- Analysis Cards --- */
+        .match-hero {
+            background: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, rgba(15, 17, 22, 0) 100%);
+            border-bottom: 1px solid var(--border-color);
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+        }
+
+        .score-board {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--text-main);
+            text-align: center;
+        }
+
+        .prediction-badge {
+            font-size: 3rem;
+            font-weight: 800;
+            background: -webkit-linear-gradient(45deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-bar-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .stat-bar-bg {
+            flex-grow: 1;
+            height: 6px;
+            background: #2d333b;
+            border-radius: 3px;
+            overflow: hidden;
+            display: flex;
+        }
+        .stat-bar-fill-home { background: var(--accent-primary); }
+        .stat-bar-fill-away { background: var(--accent-danger); }
+
+        /* --- Console Drawer --- */
+        .console-drawer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #0d1117;
+            border-top: 1px solid var(--accent-primary);
+            transition: height 0.3s ease;
+            height: 40px; /* Collapsed height */
+            z-index: 1050;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .console-header {
+            padding: 8px 20px;
+            background: #010409;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent-primary);
+        }
+
+        .console-header:hover {
+            background: #0d1117;
+        }
+
+        .console-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 10px 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            background: #0d1117;
+        }
+
+        .console-drawer.expanded {
+            height: 300px;
+        }
+        
+        /* --- Buttons & Inputs --- */
+        .btn-custom {
+            border-radius: 8px;
+            font-weight: 600;
+            padding: 0.6rem 1.2rem;
+            transition: transform 0.1s;
+        }
+        .btn-custom:active { transform: scale(0.98); }
+        
+        .form-control-dark {
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            color: white;
+        }
+        .form-control-dark:focus {
+            background-color: var(--bg-input);
+            border-color: var(--accent-primary);
+            color: white;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+
+        /* Logs Colors */
+        .log-info { color: #9ca3af; }
+        .log-success { color: #10b981; }
+        .log-error { color: #ef4444; }
+        .log-highlight { color: #a78bfa; font-weight: bold; }
+        .log-warning { color: #fbbf24; }
+
+    </style>
+</head>
+<body>
+
+    <nav class="navbar sticky-top">
+        <div class="container-fluid">
+            <a class="navbar-brand d-flex align-items-center" href="#">
+                <i class="bi bi-cpu-fill text-primary me-2"></i>
+                BetML <span class="badge bg-primary ms-2" style="font-size: 0.6rem; opacity: 0.8;">PRO V2</span>
+            </a>
+            
+            <div class="d-flex align-items-center gap-3">
+                <div id="systemStatus" class="d-flex align-items-center small text-muted border border-secondary rounded-pill px-3 py-1">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Sistema Ocioso</span>
+                </div>
+                
+                <div class="vr mx-2 text-secondary"></div>
+                
+                <button class="btn btn-sm btn-outline-secondary rounded-circle" data-bs-toggle="modal" data-bs-target="#configModal">
+                    <i class="bi bi-gear-fill"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        
+        <ul class="nav nav-pills mb-4 justify-content-center" id="mainTab" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pills-scanner">
+                    <i class="bi bi-radar me-2"></i>Scanner Live
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-analysis">
+                    <i class="bi bi-search me-2"></i>Análise Individual
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-history">
+                    <i class="bi bi-collection me-2"></i>Histórico
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-stats">
+                    <i class="bi bi-graph-up me-2"></i>Estatísticas
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="mainTabContent">
+            
+            <div class="tab-pane fade show active" id="pills-scanner">
+                <div class="row g-4">
+                    <div class="col-12">
+                        <div class="glass-panel p-4">
+                            <div class="row align-items-center g-4">
+                                <!-- Left Column: Controls Stack -->
+                                <div class="col-md-8 d-flex flex-column gap-3 align-items-start">
+                                    <!-- Period Selector -->
+                                    <div class="w-100" style="max-width: 300px;">
+                                        <label class="form-label text-muted small text-uppercase fw-bold mb-1">Período</label>
+                                        <div class="btn-group w-100" role="group">
+                                            <input type="radio" class="btn-check" name="scannerDate" id="dateToday" value="today" checked>
+                                            <label class="btn btn-outline-primary" for="dateToday">Hoje</label>
+                                            <input type="radio" class="btn-check" name="scannerDate" id="dateTom" value="tomorrow">
+                                            <label class="btn btn-outline-primary" for="dateTom">Amanhã</label>
+                                        </div>
+                                    </div>
+
+                                    <!-- Top 8 Badge -->
+                                    <div class="w-100" style="max-width: 300px;">
+                                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary w-100 py-2 d-flex align-items-center justify-content-center">
+                                            <i class="bi bi-trophy-fill me-2"></i>Top 8 Ligas
+                                        </span>
+                                    </div>
+
+                                    <!-- Search Button -->
+                                    <button class="btn btn-primary btn-custom w-100" style="max-width: 300px;" onclick="startScanner()" id="btnStartScanner">
+                                        <i class="bi bi-search me-2"></i>Buscar Novos Jogos
+                                    </button>
+                                </div>
+
+                                <!-- Right Column: Monitor -->
+                                <div class="col-md-4 d-flex justify-content-md-end justify-content-center border-start-md border-secondary ps-md-4">
+                                    <div class="glass-panel p-3 text-center" style="min-width: 160px; background: rgba(0,0,0,0.3);">
+                                        <label class="form-check-label text-muted small text-uppercase fw-bold mb-2 d-block" for="vigilanteToggle">
+                                            <i class="bi bi-activity me-1"></i>Monitor Automático
+                                        </label>
+                                        <div class="form-check form-switch d-flex justify-content-center p-0 mb-2">
+                                            <input class="form-check-input ms-0" style="width: 3.5em; height: 1.75em;" type="checkbox" id="vigilanteToggle" onchange="toggleVigilante()">
+                                        </div>
+                                        <small class="text-muted d-block" style="font-size: 0.75rem;">Atualiza status e resultados</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12" id="scannerResultsArea" style="display:none;">
+                        <div class="d-flex justify-content-between align-items-center mb-3 border-start border-4 border-primary ps-3">
+                            <h5 class="text-white mb-0">Novas Oportunidades Encontradas</h5>
+                            <span class="badge bg-dark border border-secondary" id="lastUpdateTag">Atualizado: --:--</span>
+                        </div>
+                        <div class="row g-3" id="scannerCardsContainer">
+                            </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="pills-analysis">
+                <div class="row justify-content-center">
+                    <div class="col-md-8 col-lg-6">
+                        <div class="input-group input-group-lg mb-5">
+                            <input type="text" class="form-control form-control-dark" id="matchUrl" placeholder="Cole a URL ou ID do SofaScore...">
+                            <button class="btn btn-primary" onclick="analyzeMatch()">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="analysisResult" style="display: none;">
+                    <div class="match-hero text-center rounded-3">
+                        <span class="badge bg-secondary mb-3" id="metaTournament">Tournament Name</span>
+                        <div class="d-flex justify-content-center align-items-center gap-4 mb-2">
+                            <div class="text-end" style="flex:1;">
+                                <h3 class="fw-bold mb-0" id="metaHome">Home Team</h3>
+                            </div>
+                            <div class="score-board bg-dark px-3 py-1 rounded border border-secondary" id="metaScore">
+                                0 - 0
+                            </div>
+                            <div class="text-start" style="flex:1;">
+                                <h3 class="fw-bold mb-0" id="metaAway">Away Team</h3>
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <span class="badge bg-dark border border-secondary" id="metaStatus">Not Started</span>
+                        </div>
+                    </div>
+
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-4">
+                            <div class="glass-panel p-4 text-center h-100">
+                                <h6 class="text-muted text-uppercase small mb-3">Previsão IA (ML V2)</h6>
+                                <div class="prediction-badge" id="mlPredictionValue">-</div>
+                                <div class="text-muted small mt-2" id="mlPredictionLabel">Escanteios Totais</div>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="glass-panel p-4 h-100">
+                                <h6 class="text-muted text-uppercase small mb-3">Top Opportunities</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-sm table-borderless align-middle mb-0">
+                                        <tbody id="top7Table">
+                                            </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI Suggestions Section -->
+                    <div class="glass-panel p-4 mb-4">
+                        <h6 class="text-muted text-uppercase small mb-4">Sugestões da IA</h6>
+                        <div class="row g-3" id="suggestionsContainer">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-4 mb-4">
+                        <h6 class="text-muted text-uppercase small mb-4">Estatísticas Comparativas</h6>
+                        <div id="statsVisuals">
+                            </div>
+                    </div>
+
+                    <div class="text-center pb-5">
+                        <button class="btn btn-outline-light btn-sm" onclick="updateCurrentMatch()">
+                            <i class="bi bi-arrow-repeat me-1"></i> Atualizar Dados Reais
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="pills-history">
+                <div class="glass-panel p-0 overflow-hidden">
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover mb-0 text-nowrap">
+                            <thead class="bg-black">
+                                <tr>
+                                    <th class="p-3">Data/Hora</th>
+                                    <th class="p-3">Partida</th>
+                                    <th class="p-3">Status</th>
+                                    <th class="p-3">Previsão</th>
+                                    <th class="p-3 text-end">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="pills-stats">
+                <div class="row g-4">
+                    <!-- ML Performance Metrics -->
+                    <div class="col-12">
+                        <h5 class="text-muted mb-3"><i class="bi bi-cpu-fill me-2"></i>Desempenho do Modelo ML</h5>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="glass-panel p-4 text-center">
+                            <div class="text-muted small mb-2">MAE (Erro Médio)</div>
+                            <div class="display-6 fw-bold text-success" id="statMAE">-</div>
+                            <div class="small text-muted mt-2">escanteios</div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="glass-panel p-4 text-center">
+                            <div class="text-muted small mb-2">RMSE</div>
+                            <div class="display-6 fw-bold text-info" id="statRMSE">-</div>
+                            <div class="small text-muted mt-2">desvio padrão</div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="glass-panel p-4 text-center">
+                            <div class="text-muted small mb-2">📈 Win Rate</div>
+                            <div class="display-6 fw-bold text-warning" id="statWinRate">-</div>
+                            <div class="small text-muted mt-2">taxa de acerto</div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3">
+                        <div class="glass-panel p-4 text-center">
+                            <div class="text-muted small mb-2">💵 ROI</div>
+                            <div class="display-6 fw-bold text-primary" id="statROI">-</div>
+                            <div class="small text-muted mt-2" id="statROIUnits">-</div>
+                        </div>
+                    </div>
+
+                    <!-- Database Stats -->
+                    <div class="col-12 mt-4">
+                        <h5 class="text-muted mb-3"><i class="bi bi-database-fill me-2"></i>Banco de Dados</h5>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="glass-panel p-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-muted small">Total de Jogos</div>
+                                    <div class="h3 mb-0 fw-bold" id="statTotalMatches">-</div>
+                                </div>
+                                <i class="bi bi-trophy-fill text-primary" style="font-size: 2.5rem; opacity: 0.3;"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="glass-panel p-4">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="text-muted small">Total de Previsões</div>
+                                    <div class="h3 mb-0 fw-bold" id="statTotalPredictions">-</div>
+                                </div>
+                                <i class="bi bi-graph-up-arrow text-success" style="font-size: 2.5rem; opacity: 0.3;"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Predictions by Status -->
+                    <div class="col-12 mt-4">
+                        <h5 class="text-muted mb-3"><i class="bi bi-pie-chart-fill me-2"></i>Distribuição de Resultados</h5>
+                    </div>
+                    
+                    <div class="col-12">
+                        <div class="glass-panel p-4">
+                            <div class="row g-3" id="statsPredictionsByStatus">
+                                <!-- Will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="console-drawer" id="consoleDrawer">
+        <div class="console-header" onclick="toggleConsole()">
+            <span><i class="bi bi-terminal-fill me-2"></i>TERMINAL SYSTEM LOGS</span>
+            <div>
+                <span class="badge bg-dark border border-secondary me-2" id="lastLogPreview">Pronto.</span>
+                <i class="bi bi-chevron-up" id="consoleIcon"></i>
+            </div>
+        </div>
+        <div class="console-body" id="terminalOutput">
+            <div class="log-entry"><span class="log-info">System initialized...</span></div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="configModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content glass-panel">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Configurações</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label text-muted small">Intervalo do Monitor (minutos)</label>
+                        <input type="number" class="form-control form-control-dark mb-3" id="monitorInterval" value="5" min="1">
+                        
+                        <button class="btn btn-outline-warning w-100 mb-2" onclick="updateDatabase()">Atualizar Base de Dados</button>
+                        <button class="btn btn-outline-success w-100" onclick="trainModel()">Retreinar Modelo IA</button>
+                    </div>
+                    <hr class="border-secondary">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="headlessMode" checked onchange="saveConfig()">
+                        <label class="form-check-label">Modo Headless (Navegador Oculto)</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // ==========================================
+        // UI INTERACTION LOGIC
+        // ==========================================
+        let currentMatchId = null;
+        let isConsoleExpanded = false;
+        let vigilanteInterval = null;
+
+        function toggleConsole() {
+            const drawer = document.getElementById('consoleDrawer');
+            const icon = document.getElementById('consoleIcon');
+            isConsoleExpanded = !isConsoleExpanded;
+            
+            if(isConsoleExpanded) {
+                drawer.classList.add('expanded');
+                icon.className = 'bi bi-chevron-down';
+            } else {
+                drawer.classList.remove('expanded');
+                icon.className = 'bi bi-chevron-up';
+            }
+        }
+
+        // --- Status Management ---
+        function setSystemStatus(isBusy, text, isVigilante = false) {
+            const dot = document.getElementById('statusDot');
+            const txt = document.getElementById('statusText');
+
+            if(isVigilante) {
+                dot.className = 'status-dot vigilante';
+                txt.textContent = text || 'Modo Vigilante Ativo';
+                txt.classList.add('text-warning');
+            } else if(isBusy) {
+                dot.className = 'status-dot active';
+                txt.textContent = text || 'Processando...';
+                txt.classList.add('text-primary');
+                txt.classList.remove('text-warning');
+            } else {
+                dot.className = 'status-dot';
+                txt.textContent = 'Pronto';
+                txt.className = '';
+            }
+        }
+
+        // ==========================================
+        // MONITOR MODE (Updated)
+        // ==========================================
+        function toggleVigilante() {
+            const isActive = document.getElementById('vigilanteToggle').checked;
+            
+            if(isActive) {
+                console.log("👮 Monitor iniciado.");
+                setSystemStatus(true, "Monitor Iniciando...", true);
+                
+                // Primeira execução imediata
+                triggerMonitorUpdate();
+                
+                // Define intervalo baseado na config
+                const intervalMinutes = parseInt(document.getElementById('monitorInterval').value) || 5;
+                const intervalMs = intervalMinutes * 60 * 1000;
+                
+                console.log(`⏱️ Intervalo do Monitor: ${intervalMinutes} min`);
+                
+                vigilanteInterval = setInterval(() => {
+                    triggerMonitorUpdate();
+                }, intervalMs); 
+            } else {
+                console.log("👮 Monitor parado.");
+                clearInterval(vigilanteInterval);
+                setSystemStatus(false);
+            }
+        }
+
+        function triggerMonitorUpdate() {
+            // Chama o endpoint de atualização de pendentes
+            $.post('/api/matches/update_pending')
+                .done(() => {
+                    setSystemStatus(true, "Monitor: Atualizando...", true);
+                    const check = setInterval(() => {
+                        $.get("/api/status").done(s => {
+                            if(!s.is_running) {
+                                clearInterval(check);
+                                if(document.getElementById('vigilanteToggle').checked) {
+                                    setSystemStatus(true, "Monitor: Aguardando...", true);
+                                }
+                                // Atualiza histórico visualmente se estiver na aba
+                                loadHistory();
+                            }
+                        });
+                    }, 2000);
+                })
+                .fail((err) => {
+                    console.error("Erro no Monitor:", err);
+                    if(document.getElementById('vigilanteToggle').checked) {
+                        setSystemStatus(true, "Monitor: Erro (Tentando novamente...)", true);
+                    }
+                });
+        }
+
+        // ==========================================
+        // CONFIGURATION
+        // ==========================================
+        function loadConfig() {
+            $.get('/api/config').done(function(config) {
+                document.getElementById('headlessMode').checked = config.headless;
+                if(config.monitor_interval) {
+                    document.getElementById('monitorInterval').value = config.monitor_interval;
+                }
+            });
+        }
+
+        function saveConfig() {
+            const config = {
+                headless: document.getElementById('headlessMode').checked,
+                monitor_interval: parseInt(document.getElementById('monitorInterval').value)
+            };
+            
+            $.ajax({
+                url: '/api/config',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(config)
+            });
+            
+            // Se o monitor estiver ativo, reinicia para aplicar novo intervalo
+            if(document.getElementById('vigilanteToggle').checked) {
+                toggleVigilante(); // Desliga
+                setTimeout(() => {
+                    document.getElementById('vigilanteToggle').checked = true;
+                    toggleVigilante(); // Liga com novo intervalo
+                }, 500);
+            }
+        }
+        
+        // Load config on startup
+        $(document).ready(() => {
+            loadConfig();
+        });
+
+        // ==========================================
+        // DATA VISUALIZATION HELPERS
+        // ==========================================
+        function createStatBar(label, homeVal, awayVal, total = 0) {
+            const max = total || (homeVal + awayVal) || 1; 
+            const hPct = (homeVal / max) * 100;
+            const aPct = (awayVal / max) * 100;
+
+            return `
+                <div class="row align-items-center mb-2" style="font-size: 0.85rem;">
+                    <div class="col-2 text-end text-muted">${homeVal}</div>
+                    <div class="col-8">
+                        <div class="d-flex justify-content-center text-muted small mb-1">${label}</div>
+                        <div class="stat-bar-container">
+                            <div class="stat-bar-bg">
+                                <div class="stat-bar-fill-home" style="width: ${hPct}%"></div>
+                                <div style="flex-grow:1; background: transparent;"></div>
+                                <div class="stat-bar-fill-away" style="width: ${aPct}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-2 text-start text-muted">${awayVal}</div>
+                </div>
+            `;
+        }
+
+        // ==========================================
+        // API COMMUNICATION & LOGIC
+        // ==========================================
+        
+        // 1. SSE Logs
+        const eventSource = new EventSource("/api/logs/stream");
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if(data.type === 'heartbeat') return;
+            
+            const term = document.getElementById('terminalOutput');
+            const preview = document.getElementById('lastLogPreview');
+            
+            const line = document.createElement('div');
+            line.className = 'log-entry mb-1';
+            line.innerHTML = `<span class="text-secondary small me-2">[${data.timestamp}]</span><span class="log-${data.type}">${data.message}</span>`;
+            
+            term.appendChild(line);
+            term.scrollTop = term.scrollHeight;
+            preview.textContent = data.message.substring(0, 50) + "...";
+
+            // Status Logic: Evita conflito visual com o Vigilante
+            if(!document.getElementById('vigilanteToggle').checked) {
+                if(data.message.includes("Iniciando")) setSystemStatus(true, data.message);
+                if(data.message.includes("Concluído") || data.message.includes("Sucesso")) setSystemStatus(false);
+            }
+        };
+
+        // 2. Analyze Match
+        function analyzeMatch() {
+            const url = document.getElementById('matchUrl').value;
+            if(!url) return alert("Insira uma URL!");
+
+            const tab = new bootstrap.Tab(document.querySelector('#mainTab button[data-bs-target="#pills-analysis"]'));
+            tab.show();
+
+            document.getElementById('analysisResult').style.display = 'none';
+            setSystemStatus(true, "Analisando Partida...");
+
+            $.ajax({
+                url: "/api/match/analyze",
+                method: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ url: url })
+            }).done(function(resp) {
+                currentMatchId = resp.match_id;
+                pollStatus();
+            });
+        }
+
+        // 3. Poll Status & Render (General)
+        function pollStatus() {
+            const interval = setInterval(() => {
+                $.get("/api/status").done(function(status) {
+                    if(!status.is_running) {
+                        clearInterval(interval);
+                        setSystemStatus(false);
+                        if(currentMatchId) loadMatchResult(currentMatchId);
+                        loadHistory();
+                    }
+                });
+            }, 1000);
+        }
+
+        function loadMatchResult(id) {
+            $.get(`/api/match/result/${id}`).done(function(data) {
+                renderAnalysis(data);
+            });
+        }
+
+        // 4. Update Current Match (Real-time data fetch)
+        function updateCurrentMatch() {
+            if(!currentMatchId) return; 
+            
+            const btn = document.querySelector('button[onclick="updateCurrentMatch()"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Atualizando...';
+            btn.disabled = true;
+
+            $.ajax({
+                url: '/api/database/update_match',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ url: currentMatchId.toString() })
+            })
+            .done(function() {
+                loadMatchResult(currentMatchId);
+            })
+            .always(function() {
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 1000);
+            });
+        }
+
+        function renderAnalysis(data) {
+            const m = data.match;
+            const stats = data.stats || {};
+            
+            $('#metaTournament').text(m.tournament);
+            $('#metaHome').text(m.home_team_name);
+            $('#metaAway').text(m.away_team_name);
+            $('#metaScore').text(m.status === 'finished' || m.status === 'inprogress' ? `${m.home_score} - ${m.away_score}` : "VS");
+            $('#metaStatus').text(m.status);
+            
+            const mlVal = data.ml_prediction ? data.ml_prediction.toFixed(1) : "-";
+            $('#mlPredictionValue').text(mlVal);
+            
+            const tbody = $('#top7Table');
+            tbody.empty();
+            if(data.top7) {
+                data.top7.forEach(t => {
+                    const color = t.status === 'GREEN' ? 'text-success' : (t.status === 'RED' ? 'text-danger' : 'text-warning');
+                    const icon = t.status === 'GREEN' ? 'check-circle-fill' : 'circle';
+                    tbody.append(`
+                        <tr>
+                            <td><span class="badge bg-dark border border-secondary">${t.market_group}</span></td>
+                            <td class="fw-bold">${t.market}</td>
+                            <td>${(t.probability*100).toFixed(0)}%</td>
+                            <td class="text-end ${color}"><i class="bi bi-${icon}"></i></td>
+                        </tr>
+                    `);
+                });
+
+            }
+
+            // Render Suggestions
+            const suggContainer = $('#suggestionsContainer');
+            suggContainer.empty();
+            if(data.suggestions && data.suggestions.length > 0) {
+                // Ordena: Easy -> Medium -> Hard
+                const order = { 'Suggestion_Easy': 1, 'Suggestion_Medium': 2, 'Suggestion_Hard': 3 };
+                data.suggestions.sort((a, b) => (order[a.category] || 99) - (order[b.category] || 99));
+
+                data.suggestions.forEach(s => {
+                    let badgeColor = 'secondary';
+                    let title = 'Sugestão';
+                    if(s.category === 'Suggestion_Easy') { badgeColor = 'success'; title = 'EASY (Segurança)'; }
+                    if(s.category === 'Suggestion_Medium') { badgeColor = 'warning'; title = 'MEDIUM (Equilíbrio)'; }
+                    if(s.category === 'Suggestion_Hard') { badgeColor = 'danger'; title = 'HARD (Ousadia)'; }
+
+                    suggContainer.append(`
+                        <div class="col-md-4">
+                            <div class="p-3 rounded border border-${badgeColor} bg-${badgeColor} bg-opacity-10 h-100">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="badge bg-${badgeColor}">${title}</span>
+                                    <span class="text-${badgeColor} fw-bold">${(s.probability*100).toFixed(0)}%</span>
+                                </div>
+                                <div class="text-center my-3">
+                                    <h5 class="mb-0 fw-bold text-white">${s.market}</h5>
+                                    <small class="text-muted">${s.market_group}</small>
+                                </div>
+                                <div class="text-center">
+                                    <span class="badge bg-dark border border-secondary">Odd: ${s.odds.toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `);
+                });
+            } else {
+                suggContainer.html('<div class="col-12 text-center text-muted">Nenhuma sugestão qualificada encontrada.</div>');
+            }
+
+            const visuals = $('#statsVisuals');
+            visuals.empty();
+            if(stats.possession_home) visuals.append(createStatBar("Posse de Bola (%)", stats.possession_home, stats.possession_away, 100));
+            if(stats.corners_home_ft !== undefined) visuals.append(createStatBar("Escanteios", stats.corners_home_ft, stats.corners_away_ft));
+            if(stats.total_shots_home !== undefined) visuals.append(createStatBar("Chutes Totais", stats.total_shots_home, stats.total_shots_away));
+
+            $('#analysisResult').fadeIn();
+        }
+
+        // 5. Scanner Logic
+        function startScanner() {
+            setSystemStatus(true, "Scanner Rodando...");
+            const dateMode = document.querySelector('input[name="scannerDate"]:checked').value;
+            // leaguesMode removed
+            
+            $.ajax({
+                url: '/api/scanner/start',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ date_mode: dateMode })
+            }).done(() => {
+                const check = setInterval(() => {
+                    $.get("/api/status").done(s => {
+                        if(!s.is_running) {
+                            clearInterval(check);
+                            loadScannerResults();
+                        }
+                    });
+                }, 2000);
+            });
+        }
+
+        function loadScannerResults() {
+            $.get('/api/scanner/results').done(res => {
+                const container = $('#scannerCardsContainer');
+                container.empty();
+                $('#scannerResultsArea').show();
+                
+                const now = new Date();
+                $('#lastUpdateTag').text(`Atualizado: ${now.toLocaleTimeString()}`);
+
+                if(res.length === 0) {
+                    container.html('<div class="text-muted text-center py-5">Nenhuma oportunidade encontrada.</div>');
+                    return;
+                }
+
+                res.forEach(item => {
+                    const confColor = item.confidence > 80 ? 'success' : 'primary';
+                    const card = `
+                        <div class="col-md-4">
+                            <div class="glass-panel p-3 h-100 position-relative border-top border-4 border-${confColor}">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="badge bg-dark text-muted">${item.start_time.split(' ')[1]}</span>
+                                    <span class="badge bg-${confColor} bg-opacity-10 text-${confColor} border border-${confColor}">${item.confidence}% Confiança</span>
+                                </div>
+                                <h6 class="mb-3" style="font-size: 0.95rem;">${item.match_name}</h6>
+                                <div class="d-flex justify-content-between align-items-end">
+                                    <div>
+                                        <small class="text-muted d-block">IA Sugere</small>
+                                        <span class="fw-bold text-white fs-5">${item.best_bet}</span>
+                                    </div>
+                                    <div class="text-end">
+                                        <small class="text-muted d-block">ML Pred</small>
+                                        <span class="fw-bold text-primary">${item.ml_prediction}</span>
+                                    </div>
+                                </div>
+                                <button class="btn btn-sm btn-outline-secondary w-100 mt-3" onclick="analyzeFromScanner('${item.match_id}')">Ver Detalhes</button>
+                            </div>
+                        </div>
+                    `;
+                    container.append(card);
+                });
+            });
+        }
+
+        function analyzeFromScanner(matchId) {
+             const tab = new bootstrap.Tab(document.querySelector('#mainTab button[data-bs-target="#pills-analysis"]'));
+             tab.show();
+             currentMatchId = matchId;
+             loadMatchResult(matchId);
+        }
+
+        // 6. History Logic
+        function loadHistory() {
+             $.get("/api/analyses").done(list => {
+                 // ORDENAÇÃO: Mais recentes primeiro (Timestamp Decrescente)
+                 list.sort((a, b) => b.start_timestamp - a.start_timestamp);
+
+                 const tbody = $('#historyTableBody');
+                 tbody.empty();
+                 list.forEach(i => {
+                     // Formatação correta de data e hora
+                     const dateObj = new Date(i.start_timestamp * 1000);
+                     const dateStr = dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                     const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                     
+                     // Status Badge Logic
+                     let statusBadge = '<span class="badge bg-secondary">?</span>';
+                     if(i.status === 'finished') statusBadge = '<span class="badge bg-dark border border-secondary text-muted">Encerrado</span>';
+                     else if(i.status === 'inprogress') statusBadge = '<span class="badge bg-danger border border-danger bg-opacity-10 text-danger animate-pulse">Ao Vivo</span>';
+                     else statusBadge = '<span class="badge bg-info border border-info bg-opacity-10 text-info">Agendado</span>';
+
+                     tbody.append(`
+                        <tr>
+                            <td class="text-muted small">${dateStr} ${timeStr}</td>
+                            <td>${i.home_team_name} vs ${i.away_team_name}</td>
+                            <td>${statusBadge}</td>
+                            <td><span class="badge bg-primary bg-opacity-10 text-primary">${i.ml_prediction ? i.ml_prediction.toFixed(1) : '-'}</span></td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-dark border-secondary" onclick="analyzeFromScanner('${i.match_id}')"><i class="bi bi-eye"></i></button>
+                            </td>
+                        </tr>
+                     `);
+                 });
+             });
+        }
+        
+        // 7. Modal Functions Wrappers
+        function updateDatabase() {
+            setSystemStatus(true, "Atualizando Banco...");
+            $.ajax({
+                url: "/api/database/update",
+                method: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ league_name: 'Brasileirão Série A' }) 
+            }).done(() => pollStatus());
+        }
+
+        function trainModel() {
+            setSystemStatus(true, "Treinando ML...");
+            $.ajax({
+                url: "/api/model/train",
+                method: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ mode: 'standard' })
+            }).done(() => pollStatus());
+        }
+
+        function saveConfig() {
+            // Placeholder: Apenas para o switch não dar erro
+            console.log("Config saved.");
+        }
+
+        // 8. Load Statistics
+        function loadStatistics() {
+            $.get("/api/stats").done(stats => {
+                // ML Performance Metrics
+                $('#statMAE').text(stats.mae ? stats.mae.toFixed(2) : '-');
+                $('#statRMSE').text(stats.rmse ? stats.rmse.toFixed(2) : '-');
+                $('#statWinRate').text(stats.accuracy ? stats.accuracy.toFixed(1) + '%' : '-');
+                
+                // ROI
+                if (stats.roi !== undefined && stats.roi !== null) {
+                    const roiSign = stats.roi >= 0 ? '+' : '';
+                    const roiColor = stats.roi >= 0 ? 'text-success' : 'text-danger';
+                    $('#statROI').text(roiSign + stats.roi.toFixed(1) + '%').removeClass('text-primary text-success text-danger').addClass(roiColor);
+                    $('#statROIUnits').text(roiSign + stats.roi_units.toFixed(1) + ' unidades');
+                } else {
+                    $('#statROI').text('-');
+                    $('#statROIUnits').text('-');
+                }
+                
+                // Database Stats
+                $('#statTotalMatches').text(stats.total_matches || 0);
+                $('#statTotalPredictions').text(stats.total_predictions || 0);
+                
+                // Predictions by Status
+                const statusContainer = $('#statsPredictionsByStatus');
+                statusContainer.empty();
+                if (stats.predictions_by_status && stats.predictions_by_status.length > 0) {
+                    stats.predictions_by_status.forEach(s => {
+                        const color = s.status === 'GREEN' ? 'success' : (s.status === 'RED' ? 'danger' : 'warning');
+                        const icon = s.status === 'GREEN' ? 'check-circle-fill' : (s.status === 'RED' ? 'x-circle-fill' : 'clock-fill');
+                        statusContainer.append(`
+                            <div class="col-md-4">
+                                <div class="d-flex align-items-center justify-content-between p-3 border border-${color} rounded bg-${color} bg-opacity-10">
+                                    <div>
+                                        <i class="bi bi-${icon} text-${color} me-2"></i>
+                                        <span class="text-${color} fw-bold">${s.status}</span>
+                                    </div>
+                                    <span class="badge bg-${color}">${s.count}</span>
+                                </div>
+                            </div>
+                        `);
+                    });
+                } else {
+                    statusContainer.html('<div class="col-12 text-center text-muted">Nenhum dado disponível</div>');
+                }
+            });
+        }
+
+        // Load on start
+        $(document).ready(() => {
+            loadHistory();
+            
+            // Load statistics when tab is shown
+            $('button[data-bs-target="#pills-stats"]').on('shown.bs.tab', function () {
+                loadStatistics();
+            });
+        });
+
+    </script>
+</body>
+</html>

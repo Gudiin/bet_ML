@@ -74,39 +74,33 @@ class ProfessionalPredictor:
         X: pd.DataFrame, 
         y: pd.Series, 
         timestamps: pd.Series,
+        odds: pd.Series = None,
         n_splits: int = 5
     ) -> dict:
         """
         Treina usando TimeSeriesSplit (Cross-Validation Temporal).
         
-        Em vez de um único split, usamos janelas deslizantes para validar
-        a robustez do modelo ao longo do tempo.
-        
         Args:
             X: Features de entrada.
             y: Target (total de escanteios).
             timestamps: Datas dos jogos (para ordenação temporal).
+            odds: Odds reais (opcional, para cálculo preciso de ROI).
             n_splits: Número de divisões para validação (padrão: 5).
-        
-        Returns:
-            dict: Médias das métricas de avaliação em todos os splits:
-                - mae_test: Média do MAE
-                - rmse_test: Média do RMSE
-                - win_rate: Média da Taxa de acerto
-                - roi: Média do ROI
-        
-        Regra de Negócio:
-            Implementação da "Validação Temporal" descrita no README_ML.md.
-            Garante que o modelo é testado em múltiplos cenários futuros,
-            não apenas nos últimos 20% dos dados.
         """
         from sklearn.model_selection import TimeSeriesSplit
         
         # Garante que temos os nomes das features
         self.feature_names = X.columns.tolist()
         
-        # Ordena tudo por data (CRÍTICO)
-        df_full = pd.concat([X, y.rename('target'), timestamps.rename('timestamp')], axis=1)
+        # Monta DataFrame completo para ordenação
+        data_dict = {'target': y, 'timestamp': timestamps}
+        if odds is not None:
+            data_dict['odds'] = odds
+            
+        df_aux = pd.DataFrame(data_dict)
+        df_full = pd.concat([X, df_aux], axis=1)
+        
+        # Ordena por data (CRÍTICO)
         df_full = df_full.sort_values('timestamp').reset_index(drop=True)
         
         tscv = TimeSeriesSplit(n_splits=n_splits)
@@ -123,7 +117,6 @@ class ProfessionalPredictor:
         print("="*70)
         
         fold = 1
-        # O loop do TimeSeriesSplit garante que o índice de treino é sempre anterior ao de teste
         for train_index, test_index in tscv.split(df_full):
             train_data = df_full.iloc[train_index]
             test_data = df_full.iloc[test_index]
@@ -132,7 +125,6 @@ class ProfessionalPredictor:
             print(f"   📅 Treino: {train_data['timestamp'].min()} -> {train_data['timestamp'].max()} ({len(train_data)} jogos)")
             print(f"   📅 Teste:  {test_data['timestamp'].min()} -> {test_data['timestamp'].max()} ({len(test_data)} jogos)")
             
-            # Cria modelo novo para cada fold
             model = lgb.LGBMRegressor(**self.default_params)
             
             model.fit(
@@ -145,18 +137,23 @@ class ProfessionalPredictor:
                 ]
             )
             
-            # Avaliação
             preds = model.predict(test_data[self.feature_names])
             mae = mean_absolute_error(test_data['target'], preds)
             rmse = np.sqrt(mean_squared_error(test_data['target'], preds))
             
-            # Simulação de Negócio
-            biz_metrics = self._evaluate_profitability(test_data['target'], preds, verbose=False)
+            # Passa as odds do teste se existirem
+            test_odds = test_data['odds'] if 'odds' in test_data.columns else None
+            
+            biz_metrics = self._evaluate_profitability(
+                test_data['target'], 
+                preds, 
+                odds=test_odds,
+                verbose=False
+            )
             
             metrics_history['mae'].append(mae)
             metrics_history['rmse'].append(rmse)
             
-            # Só contabiliza Win Rate se houve apostas
             if biz_metrics['total_bets'] > 0:
                 metrics_history['win_rate'].append(biz_metrics['win_rate'])
                 metrics_history['roi'].append(biz_metrics['roi'])
@@ -164,14 +161,12 @@ class ProfessionalPredictor:
             print(f"   ✅ MAE: {mae:.4f} | Win Rate: {biz_metrics['win_rate']:.1%} | ROI: {biz_metrics['roi']:.2f}")
             fold += 1
             
-            # O último modelo treinado será o salvo (treinado com mais dados)
             self.model = model
 
         # Médias Finais
         avg_mae = np.mean(metrics_history['mae'])
         avg_rmse = np.mean(metrics_history['rmse'])
         
-        # Média segura (evita divisão por zero se nunca apostou)
         if metrics_history['win_rate']:
             avg_win_rate = np.mean(metrics_history['win_rate'])
             avg_roi = np.mean(metrics_history['roi'])
@@ -197,70 +192,85 @@ class ProfessionalPredictor:
             'roi': avg_roi
         }
     
-    def _evaluate_profitability(self, y_true: pd.Series, y_pred: np.ndarray, verbose: bool = True) -> dict:
+    def get_true_probability(self, lambda_pred: float, line: float) -> float:
         """
-        Simulação de lucro (Backtest).
-        
-        Simula uma estratégia simples de apostas:
-        - Aposta no Over se Modelo > Linha da Casa + Margem de Segurança
-        - Conta quantas apostas acertamos (Green)
-        - Calcula Win Rate e ROI estimado
+        Calcula a probabilidade real de Over usando Poisson.
         
         Args:
-            y_true: Valores reais de escanteios.
-            y_pred: Previsões do modelo.
-            verbose: Se True, imprime relatório detalhado.
-        
+            lambda_pred: Média prevista pelo modelo (λ).
+            line: Linha de aposta (ex: 9.5).
+            
         Returns:
-            dict: Métricas de negócio:
-                - total_bets: Número de apostas realizadas
-                - win_rate: Taxa de acerto (0.0 a 1.0)
-                - roi: Retorno sobre investimento (em unidades)
-        
-        Regra de Negócio:
-            Esta é a métrica que realmente importa.
-            Um modelo com MAE alto mas Win Rate de 60% é melhor
-            que um modelo com MAE baixo mas Win Rate de 48%.
+            float: Probabilidade de sair MAIS que 'line' escanteios.
+        """
+        from scipy.stats import poisson
+        # P(X > line) = Survival Function (sf)
+        # sf(k) = P(X > k) -> Para Over 9.5, queremos P(X >= 10) ou P(X > 9)
+        # A implementação do scipy.stats.poisson.sf(k) é P(X > k).
+        # Se a linha é 9.5, queremos probabilidade de 10, 11, 12...
+        # Então usamos int(9.5) = 9. sf(9) = P(X > 9) = P(X >= 10).
+        return poisson.sf(int(line), lambda_pred)
+
+    def _evaluate_profitability(
+        self, 
+        y_true: pd.Series, 
+        y_pred: np.ndarray, 
+        odds: pd.Series = None,
+        verbose: bool = True
+    ) -> dict:
+        """
+        Simulação de lucro (Backtest) com Odds Reais e Probabilidade Poisson (+EV).
         """
         if verbose:
             print("\n" + "="*70)
-            print("💰 SIMULAÇÃO FINANCEIRA (BACKTEST)")
+            print("💰 SIMULAÇÃO FINANCEIRA (BACKTEST - MÉTODO +EV)")
             print("="*70)
         
         hits = 0
         total_bets = 0
+        roi_accumulated = 0.0
         
-        # Linha média do mercado (baseada em dados reais de casas de apostas)
         line = 9.5
-        margin = 1.5  # Margem de segurança
+        default_odd = 1.90
+        min_ev = 0.05 # 5% de valor esperado mínimo
         
-        # Odd média para Over 9.5 (típica: @1.85 a @1.95)
-        avg_odd = 1.90
+        # Converte para lista para iteração segura
+        y_true_list = y_true.tolist()
+        odds_list = odds.tolist() if odds is not None else [None] * len(y_true)
         
-        for true_val, pred_val in zip(y_true, y_pred):
-            # Estratégia: Aposta no Over se modelo prevê MUITO acima da linha
-            if pred_val > line + margin:
+        for i, (true_val, pred_val) in enumerate(zip(y_true_list, y_pred)):
+            current_odd = odds_list[i] if odds_list[i] and odds_list[i] > 1.0 else default_odd
+            
+            # 1. Calcula Probabilidade Real
+            prob_over = self.get_true_probability(pred_val, line)
+            
+            # 2. Calcula Odd Justa
+            fair_odd = 1 / prob_over if prob_over > 0 else 99.0
+            
+            # 3. Verifica Valor Esperado (EV)
+            # EV = (Prob * Odd) - 1
+            ev = (prob_over * current_odd) - 1
+            
+            # Aposta apenas se tiver valor positivo (+EV)
+            if ev > min_ev:
                 total_bets += 1
                 if true_val > line:  # Green!
                     hits += 1
+                    roi_accumulated += (current_odd - 1) # Lucro líquido
+                else: # Red
+                    roi_accumulated -= 1 # Perda da unidade
         
         if total_bets > 0:
             win_rate = hits / total_bets
-            
-            # ROI = (Ganhos - Perdas) / Total Apostado
-            # Ganhos = hits * odd
-            # Perdas = (total_bets - hits) * 1
-            roi = (hits * avg_odd) - total_bets
-            roi_percent = (roi / total_bets) * 100
+            roi_percent = (roi_accumulated / total_bets) * 100
             
             if verbose:
                 print(f"🎯 Apostas Realizadas: {total_bets}")
                 print(f"✅ Apostas Certas (Green): {hits}")
                 print(f"❌ Apostas Erradas (Red): {total_bets - hits}")
                 print(f"📈 Win Rate: {win_rate:.2%}")
-                print(f"💵 ROI Estimado: {roi:+.2f} unidades ({roi_percent:+.1f}%)")
+                print(f"💵 ROI Real: {roi_accumulated:+.2f} unidades ({roi_percent:+.1f}%)")
                 
-                # Análise de Viabilidade
                 if win_rate >= 0.55:
                     print(f"🟢 EXCELENTE! Win Rate acima de 55% é lucrativo a longo prazo.")
                 elif win_rate >= 0.52:
@@ -273,13 +283,12 @@ class ProfessionalPredictor:
             return {
                 'total_bets': total_bets,
                 'win_rate': win_rate,
-                'roi': roi,
+                'roi': roi_accumulated,
                 'roi_percent': roi_percent
             }
         else:
             if verbose:
-                print("⚠️ Nenhuma aposta encontrada com a margem de segurança.")
-                print("   Isso pode indicar que o modelo é muito conservador.")
+                print("⚠️ Nenhuma aposta encontrada com valor esperado positivo (+EV).")
                 print("="*70 + "\n")
             
             return {

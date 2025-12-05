@@ -15,9 +15,7 @@ from src.database.db_manager import DBManager
 from src.scrapers.sofascore import SofaScoreScraper
 from src.analysis.statistical import StatisticalAnalyzer, Colors
 
-# Imports de ML (Legado e Novo)
-from src.ml.feature_engineering import prepare_training_data
-from src.ml.model import CornerPredictor
+# Imports de ML (Profissional V2)
 from src.ml.features_v2 import create_advanced_features, prepare_features_for_prediction
 from src.ml.model_v2 import ProfessionalPredictor
 
@@ -111,6 +109,7 @@ def update_database(league_name: str = "Brasileirão Série A", season_year: str
                 match_data = {
                     'id': m['id'],
                     'tournament': m['tournament']['name'],
+                    'tournament_id': m['tournament']['id'], # Novo campo
                     'season_id': s_id,
                     'round': m['roundInfo']['round'],
                     'status': 'finished',
@@ -134,87 +133,20 @@ def update_database(league_name: str = "Brasileirão Série A", season_year: str
         scraper.stop()
         db.close()
 
-def get_current_season(league_name: str) -> str:
-    european_leagues = [
-        'Premier League', 'La Liga', 'Bundesliga', 
-        'Serie A', 'Ligue 1', 'Serie A 25/26'
-    ]
-    if league_name in european_leagues:
-        return "25/26"
-    return "2025"
-
-def get_seasons_list(league_name: str) -> list:
-    """Retorna lista das 3 últimas temporadas para a liga."""
-    european_leagues = [
-        'Premier League', 'La Liga', 'Bundesliga', 
-        'Serie A', 'Ligue 1', 'Serie A 25/26'
-    ]
-    if league_name in european_leagues:
-        return ["25/26", "24/25", "23/24"]
-    return ["2025", "2024", "2023"]
-
-def update_specific_league() -> None:
-    print("\n=== SELECIONE A LIGA ===")
-    leagues = [
-        "Brasileirão Série A",
-        "Brasileirão Série B",
-        "Premier League",
-        "La Liga",
-        "Bundesliga",
-        "Serie A 25/26",
-        "Ligue 1",
-        "Liga Profesional (Argentina)"
-    ]
-    
-    for i, league in enumerate(leagues, 1):
-        print(f"{i}. {league}")
-        
-    try:
-        choice = int(input("\nEscolha o número da liga: "))
-        if 1 <= choice <= len(leagues):
-            selected_league = leagues[choice-1]
-            seasons = get_seasons_list(selected_league)
-            
-            print(f"\n🔄 Iniciando atualização completa (3 anos) para: {selected_league}")
-            for season in seasons:
-                print(f"\n>>> Temporada {season} <<<")
-                update_database(league_name=selected_league, season_year=season)
-                
-            print(f"\n✅ Atualização concluída para {selected_league}!")
-        else:
-            print("Opção inválida.")
-    except ValueError:
-        print("Digite um número válido.")
-
-def update_all_leagues() -> None:
-    """Percorre e atualiza TODAS as ligas cadastradas."""
-    leagues = [
-        "Brasileirão Série A",
-        "Brasileirão Série B",
-        "Premier League",
-        "La Liga",
-        "Bundesliga",
-        "Serie A 25/26",
-        "Ligue 1",
-        "Liga Profesional (Argentina)"
-    ]
-    
-    print(f"\n🚀 INICIANDO ATUALIZAÇÃO EM MASSA ({len(leagues)} LIGAS)...")
-    print("Isso pode demorar. O sistema pulará automaticamente temporadas já baixadas.")
-    
-    for league in leagues:
-        seasons = get_seasons_list(league)
-        print(f"\n{'#'*50}")
-        print(f"⚽ LIGA: {league}")
-        print(f"{'#'*50}")
-        
-        for season in seasons:
-            print(f"\n>> Verificando Temporada {season}...")
-            update_database(league_name=league, season_year=season)
-
-    print("\n🏁 ATUALIZAÇÃO GERAL CONCLUÍDA!")
-
 def train_model() -> None:
+    """
+    Treina o modelo de Machine Learning utilizando o pipeline Professional V2.
+    
+    Regra de Negócio:
+        O treinamento usa LightGBM com objetivo Poisson (adequado para contagem)
+        e validação temporal estrita (TimeSeriesSplit) para evitar data leakage.
+        
+    Pipeline:
+        1. Carrega dados históricos do banco
+        2. Gera features avançadas (Home/Away, H2H, Momentum)
+        3. Treina com validação cruzada temporal (5 folds)
+        4. Salva modelo em data/corner_model_v2_professional.pkl
+    """
     db = DBManager()
     df = db.get_historical_data()
     db.close()
@@ -225,37 +157,24 @@ def train_model() -> None:
         
     print(f"Carregados {len(df)} registros para treino.")
     
-    # --- CORREÇÃO DE NOMES DE COLUNAS ---
+    # Correção de nomes de colunas para compatibilidade
     df = _fix_column_names(df)
-    # ------------------------------------
     
-    print("\n=== OPÇÕES DE TREINAMENTO ===")
-    print("1. Treinamento Rápido (Random Forest - Legado)")
-    print("2. Treinamento Otimizado (Profissional V2 - Recomendado)")
+    print("\n🚀 Iniciando Treinamento Profissional V2...")
+    print("🔧 Gerando features avançadas (Home/Away, H2H, Momentum)...")
     
-    choice = input("Escolha uma opção (1 ou 2): ")
-    
-    if choice == '2':
-        print("\n🚀 Iniciando Treinamento Profissional V2...")
-        # 1. Prepara features vetorizadas (Rápido e Seguro)
-        print("🔧 Gerando features avançadas...")
+    try:
+        X, y, timestamps = create_advanced_features(df, window_short=3, window_long=5)
         
-        # Agora o df já tem as colunas 'goals_ft_home'/'goals_ft_away' corretas
-        try:
-            X, y, timestamps = create_advanced_features(df, window_short=3, window_long=5)
-            
-            # 2. Treina com validação temporal
-            predictor = ProfessionalPredictor()
-            predictor.train_time_series_split(X, y, timestamps)
-        except Exception as e:
-            print(f"Erro fatal no treinamento: {e}")
-            traceback.print_exc()
-            
-    else:
-        print("\nTreinando modelo padrão...")
-        X, y, _ = prepare_training_data(df)
-        predictor = CornerPredictor()
-        predictor.train(X, y)
+        print(f"📊 Features geradas: {X.shape[1]} colunas, {X.shape[0]} amostras")
+        
+        # Treina com validação temporal
+        predictor = ProfessionalPredictor()
+        predictor.train_time_series_split(X, y, timestamps)
+        
+    except Exception as e:
+        print(f"❌ Erro fatal no treinamento: {e}")
+        traceback.print_exc()
 
 def analyze_match_url() -> None:
     url = input("Cole a URL do jogo do SofaScore: ")
@@ -289,6 +208,7 @@ def analyze_match_url() -> None:
         match_data = {
             'id': match_id,
             'tournament': ev.get('tournament', {}).get('name', 'Unknown'),
+            'tournament_id': ev.get('tournament', {}).get('id', 0), # Novo campo
             'season_id': ev.get('season', {}).get('id', 0),
             'round': ev.get('roundInfo', {}).get('round', 0),
             'status': 'finished',
@@ -332,13 +252,15 @@ def analyze_match_url() -> None:
         try:
             print(f"Gerando features avançadas para {match_name}...")
             
+            # Cria instância do DB para passar ao features_v2
+            db_for_features = DBManager()
             features_df = prepare_features_for_prediction(
-                df_history=df,
-                home_team_id=home_id,
-                away_team_id=away_id,
-                window_short=3,
+                home_id=home_id,
+                away_id=away_id,
+                db_manager=db_for_features,
                 window_long=5
             )
+            db_for_features.close()
             
             # 2. Carregar e Usar o Modelo Profissional
             predictor = ProfessionalPredictor()
@@ -387,109 +309,62 @@ def analyze_match_url() -> None:
         df_h_stats = prepare_team_df(home_games, home_id)
         df_a_stats = prepare_team_df(away_games, away_id)
 
-        top_picks, suggestions = analyzer.analyze_match(df_h_stats, df_a_stats, ml_prediction=ml_prediction, match_name=match_name)
+        # Extrai métricas avançadas do DataFrame de features (se disponível)
+        # Essas métricas serão usadas pelo Lambda Híbrido no Monte Carlo
+        advanced_metrics = None
+        if 'features_df' in dir() and features_df is not None and not features_df.empty:
+            try:
+                advanced_metrics = {
+                    'home_avg_corners_home': float(features_df['home_avg_corners_home'].iloc[0]),
+                    'away_avg_corners_away': float(features_df['away_avg_corners_away'].iloc[0]),
+                    'home_avg_corners_conceded_home': float(features_df['home_avg_corners_conceded_home'].iloc[0]),
+                    'away_avg_corners_conceded_away': float(features_df['away_avg_corners_conceded_away'].iloc[0]),
+                    'home_avg_corners_h2h': float(features_df['home_avg_corners_h2h'].iloc[0]),
+                    'away_avg_corners_h2h': float(features_df['away_avg_corners_h2h'].iloc[0]),
+                    'home_avg_corners_general': float(features_df['home_avg_corners_general'].iloc[0]),
+                    'away_avg_corners_general': float(features_df['away_avg_corners_general'].iloc[0]),
+                }
+                print(f"\n✅ Métricas avançadas extraídas para Monte Carlo Híbrido")
+            except Exception as e:
+                print(f"\n⚠️ Métricas avançadas não disponíveis: {e}")
+                advanced_metrics = None
+
+        top_picks, suggestions = analyzer.analyze_match(
+            df_h_stats, df_a_stats, 
+            ml_prediction=ml_prediction, 
+            match_name=match_name,
+            advanced_metrics=advanced_metrics
+        )
+        
+        # Helper to extract line value from label (e.g., "Over 3.5" -> 3.5)
+        def extract_line(label: str) -> float:
+            import re
+            match = re.search(r'(\d+\.?\d*)', label)
+            return float(match.group(1)) if match else 0.0
         
         db = DBManager()
         for pick in top_picks:
-            db.save_prediction(match_id, 'Statistical', 0, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category='Top7', market_group=pick['Mercado'])
+            line_value = extract_line(pick['Seleção'])
+            db.save_prediction(match_id, 'Statistical', line_value, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category='Top7', market_group=pick['Mercado'])
             
         for level, pick in suggestions.items():
             if pick:
-                db.save_prediction(match_id, 'Statistical', 0, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category=f"Suggestion_{level}", market_group=pick['Mercado'])
+                line_value = extract_line(pick['Seleção'])
+                db.save_prediction(match_id, 'Statistical', line_value, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category=f"Suggestion_{level}", market_group=pick['Mercado'])
         
         print("✅ Previsões salvas no banco de dados.")
+        
+        # Se o jogo já acabou, verifica se acertou imediatamente
+        if ev.get('status', {}).get('type') == 'finished':
+            print("🏁 Jogo finalizado. Verificando acertos...")
+            db.check_predictions()
+            
         db.close()
 
     except Exception as e:
         print(f"Erro na análise: {e}")
     finally:
         scraper.stop()
-
-def retrieve_analysis() -> None:
-    user_input = input("Digite o ID do jogo ou cole a URL: ")
-    
-    match_id_search = re.search(r'id:(\d+)', user_input)
-    if match_id_search:
-        match_id = match_id_search.group(1)
-    else:
-        match_id = user_input.strip()
-    
-    db = DBManager()
-    conn = db.connect()
-    
-    match_query = "SELECT home_team_name, away_team_name FROM matches WHERE match_id = ?"
-    match_info = pd.read_sql_query(match_query, conn, params=(match_id,))
-    
-    match_name = None
-    if not match_info.empty:
-        match_name = f"{match_info.iloc[0]['home_team_name']} vs {match_info.iloc[0]['away_team_name']}"
-    
-    query_ml = "SELECT predicted_value FROM predictions WHERE match_id = ? AND prediction_type = 'ML_V2'"
-    ml_pred = pd.read_sql_query(query_ml, conn, params=(match_id,))
-    
-    if not ml_pred.empty:
-        print(f"\n🤖 Previsão da IA (Professional V2): {ml_pred.iloc[0]['predicted_value']:.2f} Escanteios")
-
-    query_top7 = "SELECT market_group, market, probability, odds, status FROM predictions WHERE match_id = ? AND category = 'Top7' ORDER BY probability DESC"
-    top7 = pd.read_sql_query(query_top7, conn, params=(match_id,))
-    
-    if not top7.empty:
-        if match_name:
-             print(f"\n⚽ {Colors.BOLD}{match_name}{Colors.RESET}")
-        print(f"🏆 {Colors.BOLD}TOP 7 OPORTUNIDADES (RECUPERADO){Colors.RESET}")
-        tabela_display = []
-        for _, row in top7.iterrows():
-            prob = row['probability']
-            tipo = "OVER" if "Over" in row['market'] else "UNDER"
-            cor = Colors.GREEN if tipo == "OVER" else Colors.CYAN
-            seta = "▲" if tipo == "OVER" else "▼"
-            
-            m_group = row['market_group'] if row['market_group'] else "RECUPERADO"
-            
-            status = row['status']
-            if status == 'GREEN':
-                status_fmt = f"{Colors.GREEN}✓ GREEN{Colors.RESET}"
-            elif status == 'RED':
-                status_fmt = f"{Colors.RED}✗ RED{Colors.RESET}"
-            else:
-                status_fmt = f"{Colors.YELLOW}PENDING{Colors.RESET}"
-            
-            linha_fmt = f"{cor}{row['market']}{Colors.RESET}"
-            prob_fmt = f"{prob * 100:.1f}%"
-            odd_fmt = f"{Colors.BOLD}@{row['odds']:.2f}{Colors.RESET}"
-            direcao_fmt = f"{cor}{seta} {tipo}{Colors.RESET}"
-            
-            tabela_display.append([m_group, linha_fmt, prob_fmt, odd_fmt, direcao_fmt, status_fmt])
-            
-        headers = ["MERCADO", "LINHA", "PROB.", "ODD JUSTA", "TIPO", "STATUS"]
-        from tabulate import tabulate
-        print(tabulate(tabela_display, headers=headers, tablefmt="fancy_grid", stralign="center"))
-    else:
-        print("Nenhuma análise Top 7 encontrada para este ID.")
-
-    query_sugg = "SELECT category, market_group, market, probability, odds, status FROM predictions WHERE match_id = ? AND category LIKE 'Suggestion_%'"
-    suggs = pd.read_sql_query(query_sugg, conn, params=(match_id,))
-    
-    if not suggs.empty:
-        print(f"\n🎯 {Colors.BOLD}SUGESTÕES DA IA (RECUPERADO):{Colors.RESET}")
-        for _, row in suggs.iterrows():
-            level = row['category'].split('_')[1]
-            cor_nivel = Colors.GREEN if level == "Easy" else (Colors.YELLOW if level == "Medium" else Colors.RED)
-            m_group = row['market_group'] if row['market_group'] else ""
-            
-            status = row['status']
-            if status == 'GREEN':
-                status_fmt = f"[{Colors.GREEN}✓ GREEN{Colors.RESET}]"
-            elif status == 'RED':
-                status_fmt = f"[{Colors.RED}✗ RED{Colors.RESET}]"
-            else:
-                status_fmt = f"[{Colors.YELLOW}PENDING{Colors.RESET}]"
-                
-            print(f"{cor_nivel}[{level.upper()}]{Colors.RESET} {m_group} - {row['market']} (@{row['odds']:.2f}) | Prob: {row['probability']*100:.1f}% {status_fmt}")
-    else:
-        print("Nenhuma sugestão da IA encontrada para este ID.")
-        
-    db.close()
 
 def update_match_by_url() -> None:
     url = input("Cole a URL do jogo do SofaScore: ")
@@ -522,6 +397,7 @@ def update_match_by_url() -> None:
         match_data = {
             'id': match_id,
             'tournament': ev.get('tournament', {}).get('name', 'Unknown'),
+            'tournament_id': ev.get('tournament', {}).get('id', 0), # Novo campo
             'season_id': ev.get('season', {}).get('id', 0),
             'round': ev.get('roundInfo', {}).get('round', 0),
             'status': ev.get('status', {}).get('type', 'unknown'),
@@ -552,6 +428,86 @@ def update_match_by_url() -> None:
     finally:
         scraper.stop()
         db.close()
+
+def retrieve_analysis() -> None:
+    user_input = input("Digite o ID do jogo (ou cole a URL): ")
+    
+    # Tenta extrair ID se for URL
+    match_id_search = re.search(r'id:(\d+)', user_input)
+    if match_id_search:
+        match_id = match_id_search.group(1)
+    else:
+        # Tenta usar o input direto (limpando espaços)
+        match_id = user_input.strip()
+        if not match_id.isdigit():
+             print("❌ ID inválido. Certifique-se de colar a URL correta ou apenas os números.")
+             return
+    
+    db = DBManager()
+    conn = db.connect()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT prediction_label, confidence, odds, category, market_group, model_version, prediction_value
+        FROM predictions 
+        WHERE match_id = ?
+        ORDER BY confidence DESC
+    ''', (match_id,))
+    
+    rows = cursor.fetchall()
+    db.close()
+    
+    if not rows:
+        print("Nenhuma análise encontrada para este jogo.")
+        return
+        
+    print(f"\n📊 Análise para o Jogo {match_id}:")
+    print("-" * 50)
+    
+    # Agrupa por categoria
+    ml_pred = None
+    stats_preds = []
+    
+    for row in rows:
+        label, conf, odds, cat, market, model, val = row
+        if cat == 'Professional' or model == 'ML_V2':
+            ml_pred = (val, label)
+        else:
+            stats_preds.append((label, conf, odds, cat, market))
+            
+    if ml_pred:
+        print(f"🤖 IA (Professional V2): {ml_pred[0]:.2f} Escanteios ({ml_pred[1]})")
+        print("-" * 50)
+        
+    print("📈 Oportunidades Estatísticas:")
+    for label, conf, odds, cat, market in stats_preds:
+        print(f"   • {label:<20} | Prob: {conf:>6.1%} | Odd: {odds:>5.2f} | [{cat}]")
+    print("-" * 50)
+
+def update_specific_league() -> None:
+    league_name = input("Nome da Liga (ex: 'Brasileirão Série A'): ")
+    years = ["2023", "2024", "2025"] # Exemplo de 3 anos
+    
+    print(f"Atualizando {league_name} para os anos: {years}")
+    for year in years:
+        print(f"\n📅 Processando Temporada {year}...")
+        update_database(league_name, year)
+
+def update_all_leagues() -> None:
+    leagues = load_leagues_config()
+    years = ["2023", "2024", "2025"]  # Últimos 3 anos
+    
+    print(f"🚀 Iniciando atualização em lote de {len(leagues)} ligas...")
+    
+    for league in leagues:
+        league_name = league['torneio']  # Chave correta do JSON
+        print(f"\n🏆 Liga: {league_name}")
+        for year in years:
+            print(f"   📅 Temporada {year}...")
+            update_database(league_name, year)
+            
+    print("\n✅ Atualização em lote concluída!")
+    print("\n✅ Atualização em lote concluída!")
 
 def main():
     while True:
