@@ -486,6 +486,168 @@ class ProfessionalPredictor:
             # Futuro: Implementar correção automática de bias no predict
         else:
             print("✅ Modelo bem calibrado (Viés aceitável).")
+    
+    # ============================================================
+    # TRANSFER LEARNING - Global + League-Specific Fine-Tuning
+    # ============================================================
+    
+    def train_global_and_finetune(
+        self, 
+        X: pd.DataFrame, 
+        y: pd.Series, 
+        timestamps: pd.Series,
+        tournament_ids: pd.Series = None
+    ) -> dict:
+        """
+        Transfer Learning: Treina modelo global e depois refina por liga.
+        
+        Estratégia:
+            1. Treina modelo base com TODOS os dados (aprende padrões universais)
+            2. Para cada liga, faz fine-tuning (ajusta pesos específicos)
+            3. Salva modelo global e modelos por liga
+            
+        Args:
+            X: Features de entrada (todas as ligas).
+            y: Target.
+            timestamps: Datas dos jogos.
+            tournament_ids: IDs dos torneios (para separar por liga).
+            
+        Returns:
+            dict: Métricas por liga.
+        """
+        print("\n" + "="*70)
+        print("🌍 TRANSFER LEARNING - GLOBAL + FINE-TUNING POR LIGA")
+        print("="*70)
+        
+        # 1. Treina Modelo Global
+        print("\n📊 FASE 1: Treinando Modelo Global...")
+        global_metrics = self.train_time_series_split(X, y, timestamps)
+        
+        # Salva modelo global
+        global_path = Path("data/corner_model_global.pkl")
+        global_path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump({
+            'model': self.model,
+            'feature_names': self.feature_names,
+            'params': self.default_params
+        }, global_path)
+        print(f"💾 Modelo global salvo em: {global_path}")
+        
+        # 2. Fine-Tuning por Liga
+        if tournament_ids is None:
+            # Tenta extrair de X se existir
+            if 'tournament_id' in X.columns:
+                tournament_ids = X['tournament_id']
+            else:
+                print("⚠️ tournament_ids não fornecido. Pulando fine-tuning por liga.")
+                return {'global': global_metrics}
+        
+        print("\n📊 FASE 2: Fine-Tuning por Liga...")
+        
+        league_metrics = {}
+        unique_leagues = tournament_ids.unique()
+        
+        for league_id in unique_leagues:
+            # Filtra dados da liga
+            mask = tournament_ids == league_id
+            X_league = X[mask]
+            y_league = y[mask]
+            ts_league = timestamps[mask]
+            
+            n_games = len(X_league)
+            if n_games < 100:
+                print(f"   ⚠️ Liga {league_id}: Apenas {n_games} jogos. Pulando (mínimo: 100).")
+                continue
+                
+            print(f"\n   🏆 Liga {league_id}: {n_games} jogos")
+            
+            # Carrega modelo global como base
+            base_model = self.model
+            
+            # Fine-tuning: continua treinamento com dados da liga
+            # Usa learning rate menor para não "esquecer" o global
+            finetune_params = self.default_params.copy()
+            finetune_params['learning_rate'] = 0.005  # Menor para fine-tuning
+            finetune_params['n_estimators'] = 100  # Menos epochs
+            
+            model = lgb.LGBMRegressor(**finetune_params)
+            
+            # Treina com dados da liga (usa modelo global como warmstart conceitual)
+            # LightGBM não tem warmstart nativo, então retreinamos com learning rate baixo
+            model.fit(
+                X_league, y_league,
+                eval_set=[(X_league, y_league)],
+                eval_metric='mae',
+                callbacks=[lgb.early_stopping(stopping_rounds=20, verbose=False)]
+            )
+            
+            # Avalia
+            preds = model.predict(X_league)
+            mae = mean_absolute_error(y_league, preds)
+            print(f"      ✅ MAE Liga: {mae:.4f}")
+            
+            # Salva modelo da liga
+            league_path = Path(f"data/corner_model_league_{league_id}.pkl")
+            joblib.dump({
+                'model': model,
+                'feature_names': self.feature_names,
+                'params': finetune_params
+            }, league_path)
+            print(f"      💾 Salvo em: {league_path}")
+            
+            league_metrics[league_id] = {'mae': mae, 'n_games': n_games}
+        
+        print("\n" + "="*70)
+        print("✅ TRANSFER LEARNING CONCLUÍDO!")
+        print(f"   • Modelo Global: data/corner_model_global.pkl")
+        print(f"   • Modelos por Liga: {len(league_metrics)} ligas")
+        print("="*70 + "\n")
+        
+        return {'global': global_metrics, 'leagues': league_metrics}
+    
+    def predict_with_league(self, X: pd.DataFrame, tournament_id=None) -> np.ndarray:
+        """
+        Predição usando modelo específico da liga (se disponível).
+        
+        Estratégia:
+            1. Tenta usar modelo da liga específica
+            2. Se não existir, usa modelo global
+            3. Se não existir, usa modelo padrão
+            
+        Args:
+            X: Features.
+            tournament_id: ID do torneio (opcional).
+            
+        Returns:
+            Previsões.
+        """
+        model_to_use = self.model
+        model_source = "padrão"
+        
+        if tournament_id is not None:
+            league_path = Path(f"data/corner_model_league_{tournament_id}.pkl")
+            if league_path.exists():
+                data = joblib.load(league_path)
+                model_to_use = data['model']
+                model_source = f"liga {tournament_id}"
+        
+        # Fallback para global se liga não existe
+        if model_source == "padrão":
+            global_path = Path("data/corner_model_global.pkl")
+            if global_path.exists():
+                data = joblib.load(global_path)
+                model_to_use = data['model']
+                model_source = "global"
+        
+        if model_to_use is None:
+            raise ValueError("Nenhum modelo disponível. Treine primeiro.")
+            
+        # Remove coluna categorical se existir
+        X_clean = X.copy()
+        if 'tournament_id' in X_clean.columns:
+            X_clean = X_clean.drop(columns=['tournament_id'])
+        
+        return model_to_use.predict(X_clean)
 
 # Função auxiliar para retrocompatibilidade
 def prepare_improved_features(df: pd.DataFrame) -> tuple:

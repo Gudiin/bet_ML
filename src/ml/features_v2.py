@@ -60,6 +60,21 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     # Clip para evitar outliers (ex: 100 dias de pausa)
     team_stats['rest_days'] = team_stats['rest_days'].clip(0, 14)
     
+    # --- A2. Resultado Anterior (Win=1, Draw=0.5, Loss=0) ---
+    # Primeiro calcula se ganhou, empatou ou perdeu
+    team_stats['goals_scored'] = team_stats.apply(
+        lambda row: df.loc[df['match_id'] == row['match_id'], 'home_score' if row['is_home'] == 1 else 'away_score'].values[0] if row['match_id'] in df['match_id'].values else 0, axis=1
+    ) if 'goals' in team_stats.columns else team_stats['goals']
+    
+    team_stats['goals_conceded'] = team_stats.apply(
+        lambda row: df.loc[df['match_id'] == row['match_id'], 'away_score' if row['is_home'] == 1 else 'home_score'].values[0] if row['match_id'] in df['match_id'].values else 0, axis=1
+    ) if 'goals' in team_stats.columns else 0
+    
+    # Fallback simples: usa 'goals' que já existe
+    team_stats['last_result'] = grouped['goals'].transform(
+        lambda x: x.shift(1).apply(lambda g: 1 if g > 1 else (0.5 if g == 1 else 0))
+    ).fillna(0.5)  # Neutro se não há histórico
+    
     for col in feature_cols:
         # --- B. Médias GERAIS (Momentum) & EMA ---
         # Rolling Mean Long
@@ -154,6 +169,28 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     
     df_features['tournament_id'] = df_features['tournament_id'].astype('category')
     
+    # --- 6. Novas Features V4 ---
+    # Fase da Temporada (0=início, 0.5=meio, 1=fim)
+    # Assume 38 rodadas padrão, ajusta baseado no timestamp relativo ao torneio
+    if 'round' in df.columns:
+        df_features = df_features.merge(
+            df[['match_id', 'round']], on='match_id', how='left'
+        )
+        df_features['season_stage'] = df_features['round'].fillna(19) / 38
+        df_features['season_stage'] = df_features['season_stage'].clip(0, 1)
+    else:
+        df_features['season_stage'] = 0.5  # Fallback neutro
+    
+    # Último Resultado
+    df_features['home_last_result'] = df_features['home_last_result'] if 'home_last_result' in df_features.columns else 0.5
+    df_features['away_last_result'] = df_features['away_last_result'] if 'away_last_result' in df_features.columns else 0.5
+    
+    # Posição na Tabela (Proxy: baseado em pontos acumulados)
+    # Como não temos posição direta, usamos Win Rate recente como proxy
+    df_features['home_form_score'] = df_features['home_avg_goals_general'] * 3  # Simula pontos
+    df_features['away_form_score'] = df_features['away_avg_goals_general'] * 3
+    df_features['position_diff'] = df_features['home_form_score'] - df_features['away_form_score']
+    
     # Limpeza
     df_features = df_features.dropna()
     
@@ -184,7 +221,11 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
         'home_rest_days', 'away_rest_days',
         'home_avg_shots_general', 'away_avg_shots_general',
         'home_avg_goals_general', 'away_avg_goals_general',
-        'tournament_id'
+        'tournament_id',
+        
+        # V4 Features (Novas)
+        'season_stage',
+        'position_diff',
     ]
     
     # Garante que todas as colunas existem

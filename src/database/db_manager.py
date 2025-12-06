@@ -269,16 +269,34 @@ class DBManager:
             
         Regra de Negócio:
             Registra as previsões para posterior validação (backtesting) e exibição ao usuário.
+            Evita duplicatas verificando se já existe previsão igual.
         """
         conn = self.connect()
         cursor = conn.cursor()
         try:
+            # Verifica se já existe previsão idêntica
             cursor.execute('''
-                INSERT INTO predictions (
-                    match_id, model_version, prediction_value, prediction_label, 
-                    confidence, category, market_group, odds
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (match_id, model_version, value, label, confidence, category, market_group, odds))
+                SELECT id FROM predictions 
+                WHERE match_id = ? AND prediction_label = ? AND category = ? AND market_group = ?
+            ''', (match_id, label, category, market_group))
+            
+            existing = cursor.fetchone()
+            if existing:
+                # Atualiza em vez de duplicar
+                cursor.execute('''
+                    UPDATE predictions 
+                    SET prediction_value = ?, confidence = ?, odds = ?, model_version = ?
+                    WHERE id = ?
+                ''', (value, confidence, odds, model_version, existing[0]))
+            else:
+                # Insere nova previsão
+                cursor.execute('''
+                    INSERT INTO predictions (
+                        match_id, model_version, prediction_value, prediction_label, 
+                        confidence, category, market_group, odds
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (match_id, model_version, value, label, confidence, category, market_group, odds))
+            
             conn.commit()
             if verbose:
                 print(f"✅ Predição salva: {label} ({category})")
@@ -381,6 +399,46 @@ class DBManager:
             
         conn.commit()
         print("✅ Verificação de predições concluída.")
+    
+    def fix_existing_predictions_values(self) -> int:
+        """
+        Corrige previsões antigas que foram salvas com prediction_value=0.
+        Extrai o valor da linha do prediction_label (ex: 'Over 3.5' -> 3.5).
+        
+        Returns:
+            int: Número de previsões corrigidas.
+        """
+        import re
+        
+        conn = self.connect()
+        cursor = conn.cursor()
+        
+        # Busca predictions com valor 0 mas que têm label
+        cursor.execute('''
+            SELECT id, prediction_label 
+            FROM predictions 
+            WHERE (prediction_value IS NULL OR prediction_value = 0) 
+              AND prediction_label IS NOT NULL
+        ''')
+        
+        rows = cursor.fetchall()
+        
+        if not rows:
+            print("✅ Nenhuma previsão precisa de correção.")
+            return 0
+        
+        fixed_count = 0
+        for pred_id, label in rows:
+            # Extrai número do label (ex: "Over 3.5" -> 3.5)
+            match = re.search(r'(\d+\.?\d*)', label or '')
+            if match:
+                line_value = float(match.group(1))
+                cursor.execute("UPDATE predictions SET prediction_value = ? WHERE id = ?", (line_value, pred_id))
+                fixed_count += 1
+        
+        conn.commit()
+        print(f"✅ {fixed_count} previsões corrigidas.")
+        return fixed_count
 
     def get_pending_matches(self) -> list:
         """

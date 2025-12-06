@@ -496,8 +496,29 @@ def get_match_result(match_id: str):
     
     db.close()
     
+    match_dict = match_info.iloc[0].to_dict()
+    
+    # Para jogos ao vivo, busca minuto atualizado da API do SofaScore
+    if match_dict.get('status') == 'inprogress':
+        try:
+            import requests
+            api_url = f"https://www.sofascore.com/api/v1/event/{match_id}"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            resp = requests.get(api_url, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                ev = resp.json().get('event', {})
+                # Busca o minuto do status
+                status_desc = ev.get('status', {}).get('description', '')
+                if status_desc:
+                    match_dict['match_minute'] = status_desc
+                # Atualiza placar em tempo real
+                match_dict['home_score'] = ev.get('homeScore', {}).get('display', match_dict.get('home_score', 0))
+                match_dict['away_score'] = ev.get('awayScore', {}).get('display', match_dict.get('away_score', 0))
+        except Exception as e:
+            print(f"Erro ao buscar minuto ao vivo: {e}")
+    
     result = {
-        'match': match_info.iloc[0].to_dict(),
+        'match': match_dict,
         'ml_prediction': ml_pred.iloc[0]['prediction_value'] if not ml_pred.empty else None,
         'top7': top7.to_dict('records'),
         'suggestions': suggestions.to_dict('records'),
@@ -1020,10 +1041,10 @@ def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_his
     # 5. Salvar Previsão ML
     db.save_prediction(
         match_id=match_id,
-        pred_type='ML_V2',
+        model_version='ML_V2',
         value=ml_prediction,
-        market=best_bet,
-        prob=confidence,
+        label=best_bet,
+        confidence=confidence,
         odds=1.85, 
         category='Professional',
         market_group='Corners',
@@ -1058,14 +1079,22 @@ def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_his
             # Executa análise estatística
             top_picks, suggestions = analyzer.analyze_match(df_h_stats, df_a_stats, ml_prediction=ml_prediction, match_name=f"{home_name} vs {away_name}")
             
+            # Helper para extrair valor da linha (ex: "Over 3.5" -> 3.5)
+            def extract_line_value(label: str) -> float:
+                import re
+                match = re.search(r'(\d+\.?\d*)', label)
+                return float(match.group(1)) if match else 0.0
+            
             # Salva Top 7
             for pick in top_picks:
-                db.save_prediction(match_id, 'Statistical', 0, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category='Top7', market_group=pick['Mercado'])
+                line_val = extract_line_value(pick['Seleção'])
+                db.save_prediction(match_id, 'Statistical', line_val, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category='Top7', market_group=pick['Mercado'])
                 
             # Salva Sugestões
             for level, pick in suggestions.items():
                 if pick:
-                    db.save_prediction(match_id, 'Statistical', 0, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category=f"Suggestion_{level}", market_group=pick['Mercado'])
+                    line_val = extract_line_value(pick['Seleção'])
+                    db.save_prediction(match_id, 'Statistical', line_val, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category=f"Suggestion_{level}", market_group=pick['Mercado'])
     except Exception as e:
         # Não falha o processo todo se a estatística falhar, apenas loga
         print(f"Erro na análise estatística: {e}")

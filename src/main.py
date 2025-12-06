@@ -147,6 +147,19 @@ def train_model() -> None:
         3. Treina com validação cruzada temporal (5 folds)
         4. Salva modelo em data/corner_model_v2_professional.pkl
     """
+    print("\n" + "=" * 50)
+    print("Escolha o modo de treinamento:")
+    print("1. Treinamento Padrão (Rápido)")
+    print("2. Otimizar Modelo - AutoML (Optuna)")
+    print("3. Transfer Learning (Global + Por Liga)")
+    print("4. Optuna + Transfer Learning [RECOMENDADO]")
+    print("=" * 50)
+    
+    mode_choice = input("Opção (1, 2, 3 ou 4): ").strip()
+    use_optuna = mode_choice == '2'
+    use_transfer = mode_choice == '3'
+    use_full = mode_choice == '4'
+    
     db = DBManager()
     df = db.get_historical_data()
     db.close()
@@ -168,9 +181,41 @@ def train_model() -> None:
         
         print(f"📊 Features geradas: {X.shape[1]} colunas, {X.shape[0]} amostras")
         
-        # Treina com validação temporal
         predictor = ProfessionalPredictor()
-        predictor.train_time_series_split(X, y, timestamps)
+        
+        if use_full:
+            # MELHOR OPÇÃO: Optuna + Transfer Learning
+            n_trials_input = input("Quantos trials do Optuna? (padrão: 50): ").strip()
+            n_trials = int(n_trials_input) if n_trials_input.isdigit() else 50
+            
+            print(f"\n🔥 FASE 1: Otimização com Optuna ({n_trials} trials)...")
+            best_params = predictor.optimize_hyperparameters(X, y, timestamps, n_trials=n_trials)
+            print(f"✅ Melhores parâmetros: {best_params}")
+            
+            print("\n🌍 FASE 2: Transfer Learning com parâmetros otimizados...")
+            tournament_ids = X['tournament_id'] if 'tournament_id' in X.columns else None
+            predictor.train_global_and_finetune(X, y, timestamps, tournament_ids)
+            print("\n✅ Optuna + Transfer Learning concluído!")
+            
+        elif use_transfer:
+            # Transfer Learning: Global + Liga específica
+            print("\n🌍 Iniciando Transfer Learning (Global + Por Liga)...")
+            tournament_ids = X['tournament_id'] if 'tournament_id' in X.columns else None
+            predictor.train_global_and_finetune(X, y, timestamps, tournament_ids)
+            print("\n✅ Transfer Learning concluído!")
+        elif use_optuna:
+            n_trials_input = input("Quantos trials do Optuna? (padrão: 50, recomendado: 50-100): ").strip()
+            n_trials = int(n_trials_input) if n_trials_input.isdigit() else 50
+            print(f"\n🔥 Iniciando Otimização com Optuna ({n_trials} trials)...")
+            best_params = predictor.optimize_hyperparameters(X, y, timestamps, n_trials=n_trials)
+            print(f"\n✅ Melhores parâmetros encontrados: {best_params}")
+            print("\n📈 Treinando modelo final com parâmetros otimizados...")
+            predictor.train_time_series_split(X, y, timestamps)
+            print("\n✅ Modelo salvo com sucesso!")
+        else:
+            # Treinamento padrão
+            predictor.train_time_series_split(X, y, timestamps)
+            print("\n✅ Modelo salvo com sucesso!")
         
     except Exception as e:
         print(f"❌ Erro fatal no treinamento: {e}")
@@ -298,13 +343,16 @@ def analyze_match_url() -> None:
             data = []
             for _, row in games.iterrows():
                 is_home = row['home_team_id'] == team_id
-                data.append({
-                    'corners_ft': row['corners_home_ft'] if is_home else row['corners_away_ft'],
-                    'corners_ht': row['corners_home_ht'] if is_home else row['corners_away_ht'],
-                    'corners_2t': (row['corners_home_ft'] - row['corners_home_ht']) if is_home else (row['corners_away_ft'] - row['corners_away_ht']),
-                    'shots_ht': row['shots_ot_home_ht'] if is_home else row['shots_ot_away_ht']
-                })
-            return pd.DataFrame(data)
+                try:
+                    data.append({
+                        'corners_ft': row.get('corners_home_ft', 0) if is_home else row.get('corners_away_ft', 0),
+                        'corners_ht': row.get('corners_home_ht', 0) if is_home else row.get('corners_away_ht', 0),
+                        'corners_2t': (row.get('corners_home_ft', 0) - row.get('corners_home_ht', 0)) if is_home else (row.get('corners_away_ft', 0) - row.get('corners_away_ht', 0)),
+                        'shots_ht': row.get('shots_ot_home_ht', 0) if is_home else row.get('shots_ot_away_ht', 0)
+                    })
+                except Exception:
+                    continue
+            return pd.DataFrame(data) if data else pd.DataFrame()
 
         df_h_stats = prepare_team_df(home_games, home_id)
         df_a_stats = prepare_team_df(away_games, away_id)
@@ -345,6 +393,12 @@ def analyze_match_url() -> None:
                 print(f"\n⚠️ Métricas avançadas não disponíveis: {e}")
                 advanced_metrics = None
 
+        # Validação: só executa análise estatística se houver dados suficientes
+        if df_h_stats.empty or df_a_stats.empty or 'corners_ft' not in df_h_stats.columns:
+            print(f"\n⚠️ Análise estatística não disponível: Time(s) sem histórico no banco.")
+            print("   💡 Dica: Atualize o banco com jogos deste time primeiro (Opção 5 ou 9).")
+            return
+        
         top_picks, suggestions = analyzer.analyze_match(
             df_h_stats, df_a_stats, 
             ml_prediction=ml_prediction, 
@@ -464,7 +518,7 @@ def retrieve_analysis() -> None:
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT prediction_label, confidence, odds, category, market_group, model_version, prediction_value
+        SELECT prediction_label, confidence, odds, category, market_group, model_version, prediction_value, status
         FROM predictions 
         WHERE match_id = ?
         ORDER BY confidence DESC
@@ -478,27 +532,35 @@ def retrieve_analysis() -> None:
         return
         
     print(f"\n📊 Análise para o Jogo {match_id}:")
-    print("-" * 50)
+    print("-" * 60)
     
     # Agrupa por categoria
     ml_pred = None
     stats_preds = []
     
     for row in rows:
-        label, conf, odds, cat, market, model, val = row
+        label, conf, odds, cat, market, model, val, status = row
         if cat == 'Professional' or model == 'ML_V2':
-            ml_pred = (val, label)
+            ml_pred = (val, label, status)
         else:
-            stats_preds.append((label, conf, odds, cat, market))
+            stats_preds.append((label, conf, odds, cat, market, status))
             
     if ml_pred:
-        print(f"🤖 IA (Professional V2): {ml_pred[0]:.2f} Escanteios ({ml_pred[1]})")
-        print("-" * 50)
+        status_icon = "✅" if ml_pred[2] == 'GREEN' else ("❌" if ml_pred[2] == 'RED' else "⏳")
+        print(f"🤖 IA (Professional V2): {ml_pred[0]:.2f} Escanteios ({ml_pred[1]}) {status_icon}")
+        print("-" * 60)
         
     print("📈 Oportunidades Estatísticas:")
-    for label, conf, odds, cat, market in stats_preds:
-        print(f"   • {label:<20} | Prob: {conf:>6.1%} | Odd: {odds:>5.2f} | [{cat}]")
-    print("-" * 50)
+    for label, conf, odds, cat, market, status in stats_preds:
+        # Define ícone baseado no status
+        if status == 'GREEN':
+            status_icon = f"{Colors.GREEN}✅{Colors.RESET}"
+        elif status == 'RED':
+            status_icon = f"{Colors.RED}❌{Colors.RESET}"
+        else:
+            status_icon = "⏳"
+        print(f"   {status_icon} {label:<18} | Prob: {conf:>6.1%} | Odd: {odds:>5.2f} | [{cat}]")
+    print("-" * 60)
 
 def update_specific_league() -> None:
     league_name = input("Nome da Liga (ex: 'Brasileirão Série A'): ")
@@ -525,6 +587,208 @@ def update_all_leagues() -> None:
     print("\n✅ Atualização em lote concluída!")
     print("\n✅ Atualização em lote concluída!")
 
+def scan_opportunities() -> None:
+    """Scanner de oportunidades para jogos do dia - salva no banco automaticamente."""
+    from datetime import datetime, timedelta
+    
+    print("\n" + "=" * 50)
+    print("📡 SCANNER DE OPORTUNIDADES")
+    print("=" * 50)
+    print("1. Hoje")
+    print("2. Amanhã")
+    print("3. Data específica (AAAA-MM-DD)")
+    
+    date_choice = input("Escolha: ").strip()
+    
+    today = datetime.now()
+    if date_choice == '1':
+        target_date = today.strftime('%Y-%m-%d')
+    elif date_choice == '2':
+        target_date = (today + timedelta(days=1)).strftime('%Y-%m-%d')
+    elif date_choice == '3':
+        target_date = input("Digite a data (AAAA-MM-DD): ").strip()
+    else:
+        print("❌ Opção inválida.")
+        return
+    
+    print(f"\n🔍 Buscando jogos para {target_date}...")
+    
+    # Top 8 Ligas (IDs do SofaScore)
+    TOP_LEAGUES = [325, 17, 8, 31, 35, 34, 23, 83]  # BR, PL, LAL, BUN, SER, LIG, CL, POR
+    
+    scraper = SofaScoreScraper(headless=True)
+    db = DBManager()
+    
+    try:
+        scraper.start()
+        
+        # Busca jogos do dia
+        api_url = f"https://www.sofascore.com/api/v1/sport/football/scheduled-events/{target_date}"
+        data = scraper._fetch_api(api_url)
+        
+        if not data or 'events' not in data:
+            print("❌ Nenhum jogo encontrado.")
+            return
+        
+        # Filtra por Top Ligas
+        filtered_games = [
+            ev for ev in data['events'] 
+            if ev.get('tournament', {}).get('uniqueTournament', {}).get('id') in TOP_LEAGUES
+        ]
+        
+        print(f"📊 Encontrados {len(filtered_games)} jogos nas Top Ligas.")
+        
+        opportunities = []
+        
+        # Carrega modelo uma vez
+        predictor = ProfessionalPredictor()
+        if not predictor.load_model():
+            print("⚠️ Modelo não encontrado. Treine primeiro (opção 2).")
+            return
+        
+        # Busca histórico uma vez
+        df_history = db.get_historical_data()
+        if df_history.empty:
+            print("⚠️ Sem histórico no banco.")
+            return
+        
+        for ev in filtered_games[:15]:  # Limita a 15 jogos
+            match_id = str(ev['id'])
+            home_name = ev['homeTeam']['name']
+            away_name = ev['awayTeam']['name']
+            league_name = ev.get('tournament', {}).get('name', 'Unknown')
+            home_id = ev['homeTeam']['id']
+            away_id = ev['awayTeam']['id']
+            
+            print(f"\n🔄 [{match_id}] {home_name} vs {away_name}")
+            
+            try:
+                # 1. SALVA DADOS DA PARTIDA NO BANCO
+                match_data = {
+                    'id': match_id,
+                    'tournament': ev.get('tournament', {}).get('name', 'Unknown'),
+                    'tournament_id': ev.get('tournament', {}).get('uniqueTournament', {}).get('id', 0),
+                    'season_id': ev.get('season', {}).get('id', 0),
+                    'round': ev.get('roundInfo', {}).get('round', 0),
+                    'status': ev.get('status', {}).get('type', 'notstarted'),
+                    'timestamp': ev.get('startTimestamp', 0),
+                    'home_id': home_id,
+                    'home_name': home_name,
+                    'away_id': away_id,
+                    'away_name': away_name,
+                    'home_score': ev.get('homeScore', {}).get('display', 0) or 0,
+                    'away_score': ev.get('awayScore', {}).get('display', 0) or 0
+                }
+                db.save_match(match_data)
+                
+                # 2. GERA FEATURES E FAZ PREDIÇÃO
+                features_df = prepare_features_for_prediction(home_id, away_id, db)
+                
+                if features_df is None or features_df.empty:
+                    print("   ⚠️ Histórico insuficiente para este jogo.")
+                    continue
+                
+                ml_prediction = float(predictor.predict(features_df)[0])
+                confidence = min(0.85, 0.60 + abs(ml_prediction - 10) * 0.02)
+                best_bet = 'Over 9.5' if ml_prediction > 10 else 'Under 10.5'
+                
+                # 3. SALVA PREVISÃO ML NO BANCO
+                db.save_prediction(
+                    match_id=match_id,
+                    model_version='ML_V2',
+                    value=ml_prediction,
+                    label=best_bet,
+                    confidence=confidence,
+                    category='Professional',
+                    market_group='Corners',
+                    odds=1.85
+                )
+                
+                # 4. ANÁLISE ESTATÍSTICA (Top 7)
+                try:
+                    from src.analysis.statistical import StatisticalAnalyzer
+                    analyzer = StatisticalAnalyzer()
+                    
+                    # Prepara dados do time
+                    home_games = df_history[(df_history['home_team_id'] == home_id) | (df_history['away_team_id'] == home_id)].tail(5)
+                    away_games = df_history[(df_history['home_team_id'] == away_id) | (df_history['away_team_id'] == away_id)].tail(5)
+                    
+                    def prepare_team_df(games, team_id):
+                        data = []
+                        for _, row in games.iterrows():
+                            is_home = row['home_team_id'] == team_id
+                            data.append({
+                                'corners_ft': row['corners_home_ft'] if is_home else row['corners_away_ft'],
+                                'corners_ht': row['corners_home_ht'] if is_home else row['corners_away_ht'],
+                                'corners_2t': (row['corners_home_ft'] - row['corners_home_ht']) if is_home else (row['corners_away_ft'] - row['corners_away_ht']),
+                                'shots_ht': row.get('shots_ot_home_ht', 0) if is_home else row.get('shots_ot_away_ht', 0)
+                            })
+                        return pd.DataFrame(data) if data else pd.DataFrame()
+                    
+                    df_h_stats = prepare_team_df(home_games, home_id)
+                    df_a_stats = prepare_team_df(away_games, away_id)
+                    
+                    if not df_h_stats.empty and not df_a_stats.empty:
+                        top_picks, suggestions = analyzer.analyze_match(df_h_stats, df_a_stats, ml_prediction=ml_prediction, match_name=f"{home_name} vs {away_name}")
+                        
+                        # Helper para extrair linha
+                        def extract_line(label):
+                            import re
+                            m = re.search(r'(\d+\.?\d*)', label)
+                            return float(m.group(1)) if m else 0.0
+                        
+                        # Salva Top 7
+                        for pick in top_picks:
+                            line_val = extract_line(pick['Seleção'])
+                            db.save_prediction(match_id, 'Statistical', line_val, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category='Top7', market_group=pick['Mercado'])
+                        
+                        # Salva Sugestões
+                        for level, pick in suggestions.items():
+                            if pick:
+                                line_val = extract_line(pick['Seleção'])
+                                db.save_prediction(match_id, 'Statistical', line_val, pick['Seleção'], pick['Prob'], odds=pick['Odd'], category=f"Suggestion_{level}", market_group=pick['Mercado'])
+                except Exception as stat_err:
+                    print(f"   ⚠️ Estatística não disponível: {str(stat_err)[:40]}")
+                
+                opportunities.append({
+                    'match_id': match_id,
+                    'match': f"{home_name} vs {away_name}",
+                    'league': league_name,
+                    'prediction': ml_prediction,
+                    'confidence': confidence,
+                    'bet': best_bet
+                })
+                
+                print(f"   ✅ {ml_prediction:.1f} esc | {confidence*100:.0f}% conf | 💾 Salvo com Top7!")
+                
+            except Exception as e:
+                print(f"   ⚠️ Erro: {str(e)[:60]}")
+                continue
+        
+        # Resumo final
+        if opportunities:
+            print("\n" + "=" * 70)
+            print(f"📈 RESUMO - {len(opportunities)} oportunidades (salvas no banco):")
+            print("=" * 70)
+            
+            sorted_ops = sorted(opportunities, key=lambda x: x['confidence'], reverse=True)
+            for i, op in enumerate(sorted_ops, 1):
+                conf_color = Colors.GREEN if op['confidence'] > 0.70 else Colors.YELLOW
+                print(f"{i}. [{op['match_id']}] {op['match']}")
+                print(f"   📊 {op['prediction']:.1f} esc | {conf_color}{op['confidence']*100:.0f}%{Colors.RESET} | {op['bet']} | [{op['league']}]")
+            
+            print("-" * 70)
+            print(f"💡 Para ver análise completa: Opção 4 → Digite o ID (ex: {sorted_ops[0]['match_id']})")
+        else:
+            print("\n❌ Nenhuma oportunidade encontrada para esta data.")
+            
+    except Exception as e:
+        print(f"❌ Erro no scanner: {e}")
+        traceback.print_exc()
+    finally:
+        scraper.stop()
+        db.close()
+
 def main():
     while True:
         print("\n" + "═" * 50)
@@ -536,6 +800,7 @@ def main():
         print("4. Consultar Análise (ID)")
         print("5. Atualizar Liga Específica (3 Anos)")
         print("6. Atualizar Jogo Específico (URL)")
+        print(f"{Colors.CYAN}7. 📡 Scanner de Oportunidades (Dia){Colors.RESET}")
         print("9. 🚀 Atualizar TODAS as Ligas (3 Anos - Batch)")
         print("0. Sair")
         
@@ -553,6 +818,8 @@ def main():
             update_specific_league()
         elif choice == '6':
             update_match_by_url()
+        elif choice == '7':
+            scan_opportunities()
         elif choice == '9':
             update_all_leagues()
         elif choice == '0':
