@@ -1,6 +1,68 @@
 import pandas as pd
 import numpy as np
 
+# ============================================================================
+# FUNÇÕES AUXILIARES - MELHORIAS V5 (Auditoria ML)
+# ============================================================================
+
+def exponential_decay_weight(days_ago: float, half_life: float = 14.0) -> float:
+    """
+    Peso exponencial baseado em física de decaimento radioativo.
+    
+    Jogos recentes têm mais peso que jogos antigos.
+    
+    Args:
+        days_ago: Dias desde o jogo
+        half_life: Tempo para peso reduzir à metade (default: 14 dias)
+    
+    Returns:
+        Peso entre 0 e 1
+    
+    Fórmula:
+        w(t) = exp(-λ * t)
+        onde λ = ln(2) / half_life
+    """
+    decay_constant = np.log(2) / half_life
+    return np.exp(-decay_constant * days_ago)
+
+
+def calculate_entropy(values: pd.Series) -> float:
+    """
+    Calcula entropia de Shannon normalizada para série de resultados.
+    
+    Alta entropia = time imprevisível (resultados variam muito)
+    Baixa entropia = time consistente (resultados similares)
+    
+    Args:
+        values: Série de escanteios
+    
+    Returns:
+        Entropia normalizada entre 0 e 1
+    
+    Fórmula:
+        H = -Σ p(x) * log2(p(x))
+        Normalizada: H / log2(n_bins)
+    """
+    if len(values) < 3:
+        return 0.5  # Neutro sem dados
+    
+    # Discretiza em bins (0-5, 5-10, 10-15, 15+)
+    bins = [0, 5, 10, 15, 100]
+    hist, _ = np.histogram(values, bins=bins)
+    
+    # Remove zeros
+    hist = hist[hist > 0]
+    if len(hist) == 0:
+        return 0.5
+        
+    probs = hist / hist.sum()
+    
+    # Entropia de Shannon
+    entropy = -np.sum(probs * np.log2(probs))
+    max_entropy = np.log2(len(bins) - 1)
+    
+    return entropy / max_entropy if max_entropy > 0 else 0
+
 def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_long: int = 5) -> tuple:
     """
     Pipeline unificado de Feature Engineering (Vetorizado e Anti-Leakage) - V3 (Advanced).
@@ -96,6 +158,55 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
         
         # Trend (Curto - Longo)
         team_stats[f'trend_{col}'] = team_stats[f'avg_{col}_short'] - team_stats[f'avg_{col}_general']
+    
+    # --- E. FEATURES V5 (Auditoria ML - CORRIGIDO) ---
+    # CORREÇÃO: Decaimento exponencial SEM LEAKAGE
+    # Em vez de usar max_timestamp global (que inclui futuro), calculamos
+    # o decaimento relativo ao timestamp do PRÓPRIO jogo atual
+    
+    def calculate_decay_weighted_avg(group):
+        """
+        Calcula média ponderada por decaimento SEM leakage.
+        Para cada jogo, usa apenas jogos ANTERIORES.
+        """
+        group = group.sort_values('start_timestamp').copy()
+        result = []
+        
+        for idx in range(len(group)):
+            current_ts = group.iloc[idx]['start_timestamp']
+            
+            # Pega apenas jogos ANTERIORES (strict temporal order)
+            if idx == 0:
+                result.append(np.nan)
+                continue
+            
+            prev_games = group.iloc[:idx].copy()
+            
+            # Calcula dias desde cada jogo anterior até o jogo atual
+            prev_games['days_ago'] = (current_ts - prev_games['start_timestamp']) / 86400
+            
+            # Aplica peso de decaimento
+            prev_games['weight'] = prev_games['days_ago'].apply(
+                lambda d: exponential_decay_weight(d, half_life=14.0)
+            )
+            
+            # Média ponderada (últimos 5 jogos para eficiência)
+            recent = prev_games.tail(5)
+            if len(recent) > 0 and recent['weight'].sum() > 0:
+                weighted_avg = (recent['corners'] * recent['weight']).sum() / recent['weight'].sum()
+                result.append(weighted_avg)
+            else:
+                result.append(np.nan)
+        
+        return pd.Series(result, index=group.index)
+    
+    team_stats['decay_weighted_corners'] = grouped.apply(calculate_decay_weighted_avg).reset_index(level=0, drop=True)
+    team_stats['decay_weighted_corners'] = team_stats['decay_weighted_corners'].fillna(team_stats['avg_corners_general'])
+    
+    # Entropia (imprevisibilidade) - alta = time instável
+    team_stats['entropy_corners'] = grouped['corners'].transform(
+        lambda x: x.shift(1).rolling(window=10, min_periods=3).apply(calculate_entropy, raw=False)
+    ).fillna(0.5)
 
     # --- C. Médias ESPECÍFICAS (Home/Away) ---
     home_games = team_stats[team_stats['is_home'] == 1].sort_values(['team_id', 'start_timestamp'])
@@ -137,6 +248,85 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     
     team_stats['avg_corners_h2h'] = team_stats['avg_corners_h2h'].fillna(team_stats['avg_corners_general'])
     team_stats['avg_corners_conceded_h2h'] = team_stats['avg_corners_conceded_h2h'].fillna(team_stats['avg_corners_conceded_general'])
+    
+    # --- F. STRENGTH OF SCHEDULE (SoS) - Auditoria V6 ---
+    # Mede a força média dos adversários enfrentados
+    # Um time que faz 10 escanteios contra o lanterna != 10 contra o líder
+    
+    # 1. Força defensiva de cada time (proxy: escanteios que cede)
+    team_stats = team_stats.sort_values(['team_id', 'start_timestamp'])
+    grouped = team_stats.groupby('team_id')  # Regrouping after sort
+    
+    team_stats['own_defense_strength'] = grouped['corners_conceded'].transform(
+        lambda x: x.shift(1).rolling(window=10, min_periods=3).mean()
+    ).fillna(5.0)  # Média global como fallback
+    
+    # 2. Para cada jogo, traz a força defensiva do oponente
+    # Cria mapeamento: match_id + team_id -> own_defense_strength
+    defense_map = team_stats[['match_id', 'team_id', 'own_defense_strength']].copy()
+    defense_map.columns = ['match_id', 'opponent_id', 'opponent_defense_strength']
+    
+    team_stats = team_stats.merge(
+        defense_map,
+        on=['match_id', 'opponent_id'],
+        how='left'
+    )
+    team_stats['opponent_defense_strength'] = team_stats['opponent_defense_strength'].fillna(5.0)
+    
+    # 3. SoS Rolling = Média da força dos oponentes enfrentados recentemente
+    grouped = team_stats.groupby('team_id')  # Regrouping
+    team_stats['sos_rolling'] = grouped['opponent_defense_strength'].transform(
+        lambda x: x.shift(1).rolling(window=5, min_periods=1).mean()
+    ).fillna(5.0)
+    
+    # --- G. GAME STATE (Comportamento Histórico) - Auditoria V7 ---
+    # Mede como o time se comporta quando está ganhando vs perdendo
+    # Usa resultado PASSADO para prever comportamento futuro
+    
+    # 1. Determina resultado de cada jogo (gol do time vs gol do oponente)
+    team_stats['game_result'] = team_stats.apply(
+        lambda row: 'win' if row['goals'] > row.get('goals_conceded', 0) 
+                    else ('loss' if row['goals'] < row.get('goals_conceded', 0) else 'draw'),
+        axis=1
+    )
+    
+    # 2. Média de escanteios quando PERDEU (histórico)
+    def avg_corners_when_result(group, result_type):
+        """Calcula média de escanteios em jogos com resultado específico."""
+        result = []
+        for idx in range(len(group)):
+            if idx == 0:
+                result.append(np.nan)
+                continue
+            
+            prev_games = group.iloc[:idx]
+            filtered = prev_games[prev_games['game_result'] == result_type]
+            
+            if len(filtered) >= 2:
+                result.append(filtered['corners'].tail(5).mean())
+            else:
+                result.append(np.nan)
+        
+        return pd.Series(result, index=group.index)
+    
+    # Corners quando perde (tendência a atacar mais ou menos?)
+    team_stats['avg_corners_when_losing'] = grouped.apply(
+        lambda g: avg_corners_when_result(g.sort_values('start_timestamp'), 'loss')
+    ).reset_index(level=0, drop=True)
+    
+    # Corners quando ganha
+    team_stats['avg_corners_when_winning'] = grouped.apply(
+        lambda g: avg_corners_when_result(g.sort_values('start_timestamp'), 'win')
+    ).reset_index(level=0, drop=True)
+    
+    # Fillna com média geral
+    team_stats['avg_corners_when_losing'] = team_stats['avg_corners_when_losing'].fillna(team_stats['avg_corners_general'])
+    team_stats['avg_corners_when_winning'] = team_stats['avg_corners_when_winning'].fillna(team_stats['avg_corners_general'])
+    
+    # 3. Desperation Index = corners quando perde - corners quando ganha
+    # Positivo = time ataca mais quando perde (desesperado)
+    # Negativo = time recua quando perde (defensivo)
+    team_stats['desperation_index'] = team_stats['avg_corners_when_losing'] - team_stats['avg_corners_when_winning']
 
     # 4. Reconstrução do Dataset de Partidas
     stats_home = team_stats[team_stats['is_home'] == 1].add_prefix('home_')
@@ -223,9 +413,20 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
         'home_avg_goals_general', 'away_avg_goals_general',
         'tournament_id',
         
-        # V4 Features (Novas)
+        # V4 Features
         'season_stage',
         'position_diff',
+        
+        # V5 Features (Auditoria ML - Melhorias)
+        'home_decay_weighted_corners', 'away_decay_weighted_corners',  # Decaimento exponencial
+        'home_entropy_corners', 'away_entropy_corners',  # Imprevisibilidade
+        
+        # V6 Features (Strength of Schedule - Qualidade do Adversário)
+        'home_sos_rolling', 'away_sos_rolling',  # Força média dos oponentes enfrentados
+        'home_opponent_defense_strength', 'away_opponent_defense_strength',  # Fraqueza defensiva do adversário atual
+        
+        # V7 Features (Game State - Comportamento Histórico)
+        'home_desperation_index', 'away_desperation_index',  # Positivo = ataca mais quando perde
     ]
     
     # Garante que todas as colunas existem

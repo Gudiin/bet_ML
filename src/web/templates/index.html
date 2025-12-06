@@ -1051,6 +1051,13 @@
       function loadMatchResult(id) {
         $.get(`/api/match/result/${id}`).done(function (data) {
           renderAnalysis(data);
+          
+          // Inicia auto-refresh se jogo estiver ao vivo
+          if (data.match && data.match.status === 'inprogress') {
+            startLiveRefresh(id);
+          } else {
+            stopLiveRefresh();
+          }
         });
       }
 
@@ -1278,6 +1285,61 @@
         }
 
         $("#analysisResult").fadeIn();
+      }
+
+      // ==========================================
+      // LIVE MATCH AUTO-REFRESH
+      // ==========================================
+      let liveMatchId = null;
+      let liveRefreshInterval = null;
+
+      function startLiveRefresh(matchId) {
+        liveMatchId = matchId;
+        
+        // Para qualquer refresh anterior
+        if (liveRefreshInterval) {
+          clearInterval(liveRefreshInterval);
+        }
+        
+        // Inicia refresh a cada 30 segundos
+        liveRefreshInterval = setInterval(() => {
+          if (!liveMatchId) return;
+          
+          $.get(`/api/match/result/${liveMatchId}`)
+            .done((data) => {
+              const m = data.match;
+              
+              // Só atualiza se ainda estiver ao vivo
+              if (m.status === 'inprogress') {
+                // Atualiza placar
+                $("#metaScore").text(`${m.home_score} - ${m.away_score}`);
+                
+                // Atualiza minuto
+                if (m.match_minute) {
+                  $("#metaMinute").text(m.match_minute).show();
+                }
+                
+                console.log(`🔄 Live update: ${m.match_minute} | ${m.home_score}-${m.away_score}`);
+              } else if (m.status === 'finished') {
+                // Jogo terminou - para o refresh
+                clearInterval(liveRefreshInterval);
+                $("#metaStatus").text("Encerrado");
+                $("#metaMinute").hide();
+                console.log("✅ Jogo finalizado - refresh parado");
+              }
+            })
+            .fail(() => {
+              console.log("⚠️ Erro no live refresh");
+            });
+        }, 30000); // 30 segundos
+      }
+
+      function stopLiveRefresh() {
+        if (liveRefreshInterval) {
+          clearInterval(liveRefreshInterval);
+          liveRefreshInterval = null;
+        }
+        liveMatchId = null;
       }
 
       // 5. Scanner Logic

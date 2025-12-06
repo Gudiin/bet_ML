@@ -55,9 +55,12 @@ class ProfessionalPredictor:
         self.model = None
         self.feature_names = None
         
-        # Hiperparâmetros otimizados para Poisson
+        # Hiperparâmetros otimizados para Tweedie (melhor que Poisson para overdispersion)
+        # Tweedie com power=1.5 é compromisso entre Poisson (1.0) e Gamma (2.0)
+        # Captura melhor jogos com 15+ escanteios (outliers)
         self.default_params = {
-            'objective': 'poisson',  # CRUCIAL para contagem
+            'objective': 'tweedie',  # MELHORIA: Mais flexível que Poisson
+            'tweedie_variance_power': 1.5,  # 1=Poisson, 2=Gamma, 1.5=Compound Poisson-Gamma
             'n_estimators': 500,
             'learning_rate': 0.01,
             'num_leaves': 31,
@@ -219,46 +222,62 @@ class ProfessionalPredictor:
         verbose: bool = True
     ) -> dict:
         """
-        Simulação de lucro (Backtest) com Odds Reais e Probabilidade Poisson (+EV).
+        Simulação de lucro (Backtest) REALISTA com Linhas Dinâmicas.
+        
+        MELHORIA V6: Em vez de linha fixa 9.5, escolhe linha baseada na previsão.
+        Isso simula melhor o comportamento real de apostas.
         """
         if verbose:
             print("\n" + "="*70)
-            print("💰 SIMULAÇÃO FINANCEIRA (BACKTEST - MÉTODO +EV)")
+            print("💰 SIMULAÇÃO FINANCEIRA (BACKTEST V6 - LINHA DINÂMICA)")
             print("="*70)
         
         hits = 0
         total_bets = 0
         roi_accumulated = 0.0
         
-        line = 9.5
-        default_odd = 1.90
-        min_ev = 0.05 # 5% de valor esperado mínimo
+        # Linhas disponíveis no mercado típico
+        available_lines = [7.5, 8.5, 9.5, 10.5, 11.5, 12.5]
+        
+        # Odds REALISTAS por linha (conservadoras, refletem vig das casas)
+        line_odds = {
+            7.5: 1.45, 8.5: 1.65, 9.5: 1.80, 
+            10.5: 2.00, 11.5: 2.25, 12.5: 2.60
+        }
+        
+        min_ev = 0.03  # 3% EV mínimo (mais conservador)
         
         # Converte para lista para iteração segura
         y_true_list = y_true.tolist()
         odds_list = odds.tolist() if odds is not None else [None] * len(y_true)
         
         for i, (true_val, pred_val) in enumerate(zip(y_true_list, y_pred)):
-            current_odd = odds_list[i] if odds_list[i] and odds_list[i] > 1.0 else default_odd
+            # 1. LINHA DINÂMICA: Escolhe linha logo abaixo da previsão
+            # Ex: Previsão 10.3 → Linha 9.5 (Over mais seguro)
+            valid_lines = [l for l in available_lines if l < pred_val]
+            if not valid_lines:
+                continue  # Previsão muito baixa, sem aposta
             
-            # 1. Calcula Probabilidade Real
-            prob_over = self.get_true_probability(pred_val, line)
+            best_line = max(valid_lines)
             
-            # 2. Calcula Odd Justa
+            # 2. Odd da linha escolhida (ou odd fornecida)
+            current_odd = odds_list[i] if odds_list[i] and odds_list[i] > 1.0 else line_odds.get(best_line, 1.80)
+            
+            # 3. Calcula Probabilidade Real via Poisson
+            prob_over = self.get_true_probability(pred_val, best_line)
+            
+            # 4. Calcula Odd Justa e EV
             fair_odd = 1 / prob_over if prob_over > 0 else 99.0
-            
-            # 3. Verifica Valor Esperado (EV)
-            # EV = (Prob * Odd) - 1
             ev = (prob_over * current_odd) - 1
             
-            # Aposta apenas se tiver valor positivo (+EV)
+            # 5. Aposta apenas se EV > threshold
             if ev > min_ev:
                 total_bets += 1
-                if true_val > line:  # Green!
+                if true_val > best_line:  # Green!
                     hits += 1
-                    roi_accumulated += (current_odd - 1) # Lucro líquido
-                else: # Red
-                    roi_accumulated -= 1 # Perda da unidade
+                    roi_accumulated += (current_odd - 1)
+                else:  # Red
+                    roi_accumulated -= 1
         
         if total_bets > 0:
             win_rate = hits / total_bets

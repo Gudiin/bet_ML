@@ -86,6 +86,60 @@ class StatisticalAnalyzer:
         Classe é stateless - nenhuma inicialização necessária.
         """
         self.n_simulations = 10000
+        
+        # Pesos padrão (serão substituídos por Bayesianos se houver histórico)
+        self.default_weights = {
+            'IA': 0.40,
+            'Specific': 0.25,
+            'Defense': 0.15,
+            'H2H': 0.10,
+            'Momentum': 0.10
+        }
+    
+    def calculate_bayesian_weights(
+        self,
+        historical_errors: dict = None
+    ) -> dict:
+        """
+        Calcula pesos dinamicamente usando inverso do erro quadrático médio.
+        
+        Permite que fontes mais precisas recebam mais peso automaticamente.
+        
+        Args:
+            historical_errors: Dict com listas de erros por fonte.
+                              Ex: {'IA': [1.2, 0.8, ...], 'Specific': [0.5, 1.1, ...]}
+        
+        Returns:
+            dict: Pesos normalizados que somam 1.0
+        
+        Fórmula Bayesiana (aproximada):
+            w_i = (1 / MSE_i) / Σ(1 / MSE_j)
+            
+        Onde MSE_i é o erro quadrático médio da fonte i.
+        """
+        if not historical_errors or len(historical_errors) == 0:
+            return self.default_weights.copy()
+        
+        weights = {}
+        total_precision = 0
+        
+        for source, errors in historical_errors.items():
+            if len(errors) == 0:
+                weights[source] = 1.0
+                total_precision += 1.0
+                continue
+                
+            mse = np.mean(np.array(errors) ** 2) + 1e-6  # Evita divisão por zero
+            precision = 1.0 / mse
+            weights[source] = precision
+            total_precision += precision
+        
+        # Normaliza para somar 1
+        if total_precision > 0:
+            for source in weights:
+                weights[source] /= total_precision
+        
+        return weights
 
     def calculate_hybrid_lambda(
         self,
