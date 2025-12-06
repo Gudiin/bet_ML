@@ -314,6 +314,17 @@ def analyze_match_url() -> None:
         advanced_metrics = None
         if 'features_df' in dir() and features_df is not None and not features_df.empty:
             try:
+                # Extração
+                am = {
+                    'home_trend': float(features_df['home_trend_corners'].iloc[0]),
+                    'away_trend': float(features_df['away_trend_corners'].iloc[0]),
+                    'home_vol': float(features_df['home_std_corners_general'].iloc[0]),
+                    'away_vol': float(features_df['away_std_corners_general'].iloc[0]),
+                    'home_att': float(features_df['home_attack_adv'].iloc[0]),
+                    'away_att': float(features_df['away_attack_adv'].iloc[0]),
+                }
+                
+                # Métricas para Monte Carlo (mantém nomes originais)
                 advanced_metrics = {
                     'home_avg_corners_home': float(features_df['home_avg_corners_home'].iloc[0]),
                     'away_avg_corners_away': float(features_df['away_avg_corners_away'].iloc[0]),
@@ -324,7 +335,12 @@ def analyze_match_url() -> None:
                     'home_avg_corners_general': float(features_df['home_avg_corners_general'].iloc[0]),
                     'away_avg_corners_general': float(features_df['away_avg_corners_general'].iloc[0]),
                 }
-                print(f"\n✅ Métricas avançadas extraídas para Monte Carlo Híbrido")
+
+                print(f"\n📊 {Colors.BOLD}Métricas Avançadas (V3):{Colors.RESET}")
+                print(f"   • Trend (Momentum):   Casa {am['home_trend']:+.2f} | Fora {am['away_trend']:+.2f}")
+                print(f"   • Volatilidade:       Casa {am['home_vol']:.2f} | Fora {am['away_vol']:.2f}")
+                print(f"   • Ataque vs Defesa:   Casa {am['home_att']:+.2f} | Fora {am['away_att']:+.2f}")
+                
             except Exception as e:
                 print(f"\n⚠️ Métricas avançadas não disponíveis: {e}")
                 advanced_metrics = None

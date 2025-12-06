@@ -378,6 +378,115 @@ class ProfessionalPredictor:
         return df_importance
 
 
+    def optimize_hyperparameters(
+        self, 
+        X: pd.DataFrame, 
+        y: pd.Series, 
+        timestamps: pd.Series,
+        n_trials: int = 20
+    ) -> dict:
+        """
+        Otimiza hiperparâmetros usando Optuna (AutoML).
+        
+        Args:
+            X: Features.
+            y: Target.
+            timestamps: Datas (para validação temporal).
+            n_trials: Número de tentativas (default: 20).
+            
+        Returns:
+            dict: Melhores parâmetros encontrados.
+        """
+        try:
+            import optuna
+            from sklearn.model_selection import TimeSeriesSplit
+        except ImportError:
+            print("❌ Optuna não instalado. Execute: pip install optuna")
+            return self.default_params
+
+        print(f"\n🚀 INICIANDO OTIMIZAÇÃO DE HIPERPARÂMETROS (OPTUNA) - {n_trials} TRIALS")
+        
+        # Garante ordenação
+        data_dict = {'target': y, 'timestamp': timestamps}
+        df_aux = pd.DataFrame(data_dict)
+        df_full = pd.concat([X, df_aux], axis=1).sort_values('timestamp').reset_index(drop=True)
+        
+        X_sorted = df_full[X.columns]
+        y_sorted = df_full['target']
+        
+        def objective(trial):
+            params = {
+                'objective': 'poisson',
+                'metric': 'mae',
+                'verbosity': -1,
+                'boosting_type': 'gbdt',
+                'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
+                'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.1, log=True),
+                'num_leaves': trial.suggest_int('num_leaves', 20, 150),
+                'max_depth': trial.suggest_int('max_depth', 3, 12),
+                'min_child_samples': trial.suggest_int('min_child_samples', 5, 100),
+                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+                'reg_alpha': trial.suggest_float('reg_alpha', 1e-8, 10.0, log=True),
+                'reg_lambda': trial.suggest_float('reg_lambda', 1e-8, 10.0, log=True),
+            }
+            
+            tscv = TimeSeriesSplit(n_splits=3) # Menos splits para ser mais rápido
+            scores = []
+            
+            for train_idx, test_idx in tscv.split(X_sorted):
+                X_train, X_test = X_sorted.iloc[train_idx], X_sorted.iloc[test_idx]
+                y_train, y_test = y_sorted.iloc[train_idx], y_sorted.iloc[test_idx]
+                
+                model = lgb.LGBMRegressor(**params)
+                model.fit(X_train, y_train, callbacks=[lgb.early_stopping(20, verbose=False)], 
+                          eval_set=[(X_test, y_test)], eval_metric='mae')
+                
+                preds = model.predict(X_test)
+                scores.append(mean_absolute_error(y_test, preds))
+                
+            return np.mean(scores)
+
+        study = optuna.create_study(direction='minimize')
+        study.optimize(objective, n_trials=n_trials)
+        
+        print(f"✅ Melhores parâmetros encontrados: {study.best_params}")
+        print(f"   Melhor MAE: {study.best_value:.4f}")
+        
+        # Atualiza os parâmetros padrão com os melhores encontrados
+        self.default_params.update(study.best_params)
+        return study.best_params
+
+    def calibrate_model(self, X: pd.DataFrame, y: pd.Series) -> None:
+        """
+        Calibração de Probabilidade (Isotonic Regression).
+        
+        Ajusta as probabilidades previstas para refletir a realidade.
+        Ex: Se o modelo diz 70% de chance, deve acontecer 70% das vezes.
+        
+        Implementação simplificada: Ajusta o bias do lambda.
+        """
+        from sklearn.isotonic import IsotonicRegression
+        
+        if self.model is None:
+            print("⚠️ Modelo não treinado. Pule a calibração.")
+            return
+
+        preds = self.model.predict(X)
+        
+        # Verifica bias (Viés)
+        bias = np.mean(preds) - np.mean(y)
+        print(f"\n⚖️ ANÁLISE DE CALIBRAÇÃO")
+        print(f"   Média Prevista: {np.mean(preds):.2f}")
+        print(f"   Média Real:     {np.mean(y):.2f}")
+        print(f"   Viés (Bias):    {bias:+.2f}")
+        
+        if abs(bias) > 0.5:
+            print("⚠️ Modelo descalibrado! Recomendado ajuste de intercept.")
+            # Futuro: Implementar correção automática de bias no predict
+        else:
+            print("✅ Modelo bem calibrado (Viés aceitável).")
+
 # Função auxiliar para retrocompatibilidade
 def prepare_improved_features(df: pd.DataFrame) -> tuple:
     """

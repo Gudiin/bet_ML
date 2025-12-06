@@ -374,6 +374,35 @@ def api_train_model():
     return jsonify({'status': 'started'})
 
 
+@app.route('/api/model/optimize', methods=['POST'])
+def api_optimize_model():
+    """Inicia otimização de hiperparâmetros (AutoML)."""
+    data = request.json or {}
+    n_trials = data.get('n_trials', 20)
+    
+    with state_lock:
+        if system_state['is_running']:
+            return jsonify({'error': 'Já existe uma tarefa em execução'}), 400
+        system_state['is_running'] = True
+        system_state['current_task'] = f'Otimizando Modelo ({n_trials} trials)'
+        system_state['progress'] = 0
+    
+    def run_optimize():
+        try:
+            _optimize_model_task(n_trials)
+        finally:
+            with state_lock:
+                system_state['is_running'] = False
+                system_state['current_task'] = None
+                system_state['progress'] = 100
+    
+    thread = threading.Thread(target=run_optimize)
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({'status': 'started'})
+
+
 @app.route('/api/match/analyze', methods=['POST'])
 def api_analyze_match():
     """Analisa uma partida específica."""
@@ -872,6 +901,45 @@ def _train_model_task(mode: str = 'standard') -> None:
     update_progress(100, 'Treinamento concluído')
 
 
+def _optimize_model_task(n_trials: int = 20) -> None:
+    """Tarefa de otimização de hiperparâmetros (AutoML)."""
+    emit_log(f'🚀 Iniciando AutoML (Optuna) com {n_trials} tentativas...', 'highlight')
+    update_progress(10, 'Carregando dados...')
+    
+    db = DBManager()
+    df = db.get_historical_data()
+    db.close()
+    
+    if df.empty:
+        emit_log('❌ Banco de dados vazio.', 'error')
+        return
+        
+    try:
+        # 1. Gera features
+        update_progress(20, 'Gerando features...')
+        X, y, timestamps = create_advanced_features(df)
+        
+        # 2. Otimiza
+        update_progress(40, 'Executando Optuna (pode demorar)...')
+        predictor = ProfessionalPredictor()
+        best_params = predictor.optimize_hyperparameters(X, y, timestamps, n_trials=n_trials)
+        
+        emit_log(f'✅ Otimização concluída! Melhores params: {best_params}', 'success')
+        
+        # 3. Treina modelo final com melhores params
+        update_progress(80, 'Treinando modelo final...')
+        predictor.train_time_series_split(X, y, timestamps)
+        
+        emit_log('💾 Modelo otimizado salvo com sucesso!', 'success')
+        
+    except Exception as e:
+        emit_log(f'❌ Erro na otimização: {e}', 'error')
+        import traceback
+        traceback.print_exc()
+        
+    update_progress(100, 'Otimização concluída')
+
+
 def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_history: pd.DataFrame, db: DBManager) -> Dict[str, Any]:
     """
     Lógica central de previsão e persistência (Atualizado para ML V2).
@@ -1002,6 +1070,22 @@ def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_his
         # Não falha o processo todo se a estatística falhar, apenas loga
         print(f"Erro na análise estatística: {e}")
     
+    # Extrai métricas avançadas para o frontend
+    advanced_metrics = {}
+    try:
+        if not features_df.empty:
+            # Trend
+            advanced_metrics['home_trend'] = float(features_df['home_trend_corners'].iloc[0])
+            advanced_metrics['away_trend'] = float(features_df['away_trend_corners'].iloc[0])
+            # Volatility
+            advanced_metrics['home_volatility'] = float(features_df['home_std_corners_general'].iloc[0])
+            advanced_metrics['away_volatility'] = float(features_df['away_std_corners_general'].iloc[0])
+            # Attack Advantage
+            advanced_metrics['home_attack_adv'] = float(features_df['home_attack_adv'].iloc[0])
+            advanced_metrics['away_attack_adv'] = float(features_df['away_attack_adv'].iloc[0])
+    except Exception as e:
+        print(f"Erro ao extrair métricas avançadas: {e}")
+
     return {
         'match_name': f"{home_name} vs {away_name}",
         'ml_prediction': round(ml_prediction, 1),
@@ -1009,7 +1093,8 @@ def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_his
         'best_bet': best_bet,
         'home_avg_corners': round(h_avg, 1),
         'away_avg_corners': round(a_avg, 1),
-        'match_id': match_id
+        'match_id': match_id,
+        'advanced_metrics': advanced_metrics
     }
 
 

@@ -547,6 +547,45 @@
               <div id="statsVisuals"></div>
             </div>
 
+            <!-- Advanced Metrics Section (V3) -->
+            <div class="glass-panel p-4 mb-4" id="advancedMetricsPanel" style="display: none;">
+              <h6 class="text-muted text-uppercase small mb-4">
+                <i class="bi bi-activity me-2"></i>Métricas Avançadas (V3)
+              </h6>
+              <div class="row g-4 text-center">
+                <div class="col-md-4">
+                  <div class="p-3 border border-secondary rounded bg-dark bg-opacity-50">
+                    <small class="text-muted d-block mb-1">Trend (Momentum)</small>
+                    <div class="d-flex justify-content-between px-3">
+                      <span id="advHomeTrend" class="fw-bold">-</span>
+                      <span class="text-muted">vs</span>
+                      <span id="advAwayTrend" class="fw-bold">-</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="p-3 border border-secondary rounded bg-dark bg-opacity-50">
+                    <small class="text-muted d-block mb-1">Volatilidade (Risco)</small>
+                    <div class="d-flex justify-content-between px-3">
+                      <span id="advHomeVol" class="fw-bold">-</span>
+                      <span class="text-muted">vs</span>
+                      <span id="advAwayVol" class="fw-bold">-</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="p-3 border border-secondary rounded bg-dark bg-opacity-50">
+                    <small class="text-muted d-block mb-1">Ataque vs Defesa</small>
+                    <div class="d-flex justify-content-between px-3">
+                      <span id="advHomeAtt" class="fw-bold">-</span>
+                      <span class="text-muted">vs</span>
+                      <span id="advAwayAtt" class="fw-bold">-</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="text-center pb-5">
               <button
                 class="btn btn-outline-light btn-sm"
@@ -735,6 +774,12 @@
                 onclick="trainModel()"
               >
                 Retreinar Modelo IA
+              </button>
+              <button
+                class="btn btn-outline-info w-100 mt-2"
+                onclick="optimizeModel()"
+              >
+                <i class="bi bi-stars me-2"></i>Otimizar Modelo (AutoML)
               </button>
             </div>
             <hr class="border-secondary" />
@@ -1210,6 +1255,28 @@
             )
           );
 
+        // Render Advanced Metrics (V3)
+        if (data.advanced_metrics && Object.keys(data.advanced_metrics).length > 0) {
+            const am = data.advanced_metrics;
+            
+            // Helper for trend color
+            const trendColor = (val) => val > 0 ? 'text-success' : val < 0 ? 'text-danger' : 'text-muted';
+            const trendSign = (val) => val > 0 ? '+' : '';
+            
+            $('#advHomeTrend').text(trendSign(am.home_trend) + am.home_trend.toFixed(2)).attr('class', 'fw-bold ' + trendColor(am.home_trend));
+            $('#advAwayTrend').text(trendSign(am.away_trend) + am.away_trend.toFixed(2)).attr('class', 'fw-bold ' + trendColor(am.away_trend));
+            
+            $('#advHomeVol').text(am.home_volatility.toFixed(2));
+            $('#advAwayVol').text(am.away_volatility.toFixed(2));
+            
+            $('#advHomeAtt').text(am.home_attack_adv.toFixed(2));
+            $('#advAwayAtt').text(am.away_attack_adv.toFixed(2));
+            
+            $('#advancedMetricsPanel').show();
+        } else {
+            $('#advancedMetricsPanel').hide();
+        }
+
         $("#analysisResult").fadeIn();
       }
 
@@ -1375,6 +1442,17 @@
           method: "POST",
           contentType: "application/json",
           data: JSON.stringify({ mode: "standard" }),
+        }).done(() => pollStatus());
+      }
+
+      function optimizeModel() {
+        if(!confirm("Isso pode levar vários minutos. Deseja continuar?")) return;
+        setSystemStatus(true, "Otimizando ML...");
+        $.ajax({
+          url: "/api/model/optimize",
+          method: "POST",
+          contentType: "application/json",
+          data: JSON.stringify({ n_trials: 20 }),
         }).done(() => pollStatus());
       }
 

@@ -3,13 +3,18 @@ import numpy as np
 
 def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_long: int = 5) -> tuple:
     """
-    Pipeline unificado de Feature Engineering (Vetorizado e Anti-Leakage).
+    Pipeline unificado de Feature Engineering (Vetorizado e Anti-Leakage) - V3 (Advanced).
     
     Gera:
     1. Médias móveis Gerais (Momentum)
-    2. Médias móveis Específicas (Home/Away) - NOVO
-    3. Médias de Concessão (Defesa) - NOVO
-    4. H2H (Confronto Direto) - NOVO
+    2. Médias móveis Específicas (Home/Away)
+    3. Médias de Concessão (Defesa)
+    4. H2H (Confronto Direto)
+    5. Trend (Curto vs Longo Prazo) - NOVO
+    6. Volatilidade (Desvio Padrão) - NOVO
+    7. Rest Days (Cansaço) - NOVO
+    8. EMA (Exponential Moving Average) - NOVO
+    9. Força Relativa (Interações) - NOVO
     
     Returns:
         X (pd.DataFrame): Features
@@ -48,37 +53,50 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     
     feature_cols = ['corners', 'shots', 'goals', 'corners_conceded']
     
+    # --- A. Features Temporais (Rest Days) ---
+    team_stats['prev_timestamp'] = grouped['start_timestamp'].shift(1)
+    team_stats['rest_days'] = (team_stats['start_timestamp'] - team_stats['prev_timestamp']) / 86400
+    team_stats['rest_days'] = team_stats['rest_days'].fillna(7) # Fallback: 7 dias de descanso
+    # Clip para evitar outliers (ex: 100 dias de pausa)
+    team_stats['rest_days'] = team_stats['rest_days'].clip(0, 14)
+    
     for col in feature_cols:
-        # A. Médias GERAIS (Momentum) - Todos os jogos
+        # --- B. Médias GERAIS (Momentum) & EMA ---
+        # Rolling Mean Long
         team_stats[f'avg_{col}_general'] = grouped[col].transform(
             lambda x: x.shift(1).rolling(window=window_long, min_periods=1).mean()
         )
+        # Rolling Mean Short (para Trend)
+        team_stats[f'avg_{col}_short'] = grouped[col].transform(
+            lambda x: x.shift(1).rolling(window=window_short, min_periods=1).mean()
+        )
+        # EMA (Exponential Moving Average) - Dá mais peso ao recente
+        team_stats[f'ema_{col}_general'] = grouped[col].transform(
+            lambda x: x.shift(1).ewm(span=window_long, min_periods=1).mean()
+        )
+        # Volatilidade (Std Dev)
+        team_stats[f'std_{col}_general'] = grouped[col].transform(
+            lambda x: x.shift(1).rolling(window=window_long, min_periods=2).std()
+        ).fillna(0)
         
-        # B. Médias ESPECÍFICAS (Home/Away)
-        # Se is_home=1, pega média dos jogos anteriores onde is_home=1
-        # Se is_home=0, pega média dos jogos anteriores onde is_home=0
-        
-        # Truque vetorizado: Separar em dois grupos, calcular rolling, e juntar
-        # Mas precisamos manter o alinhamento temporal.
-        # Abordagem: Calcular rolling apenas sobre as linhas filtradas e depois dar merge/join
-        
-    # Implementação Otimizada de Home/Away Specifics
-    # Separa dataframes filtrados
+        # Trend (Curto - Longo)
+        team_stats[f'trend_{col}'] = team_stats[f'avg_{col}_short'] - team_stats[f'avg_{col}_general']
+
+    # --- C. Médias ESPECÍFICAS (Home/Away) ---
     home_games = team_stats[team_stats['is_home'] == 1].sort_values(['team_id', 'start_timestamp'])
     away_games = team_stats[team_stats['is_home'] == 0].sort_values(['team_id', 'start_timestamp'])
     
-    # Calcula rolling específico
     for col in feature_cols:
-        # Média EM CASA (para quando joga em casa)
+        # Média EM CASA
         home_games[f'avg_{col}_home'] = home_games.groupby('team_id')[col].transform(
             lambda x: x.shift(1).rolling(window=window_long, min_periods=1).mean()
         )
-        # Média FORA (para quando joga fora)
+        # Média FORA
         away_games[f'avg_{col}_away'] = away_games.groupby('team_id')[col].transform(
             lambda x: x.shift(1).rolling(window=window_long, min_periods=1).mean()
         )
 
-    # Merge de volta para team_stats
+    # Merge de volta
     team_stats = team_stats.merge(
         home_games[['match_id', 'team_id'] + [f'avg_{col}_home' for col in feature_cols]], 
         on=['match_id', 'team_id'], how='left'
@@ -88,27 +106,24 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
         on=['match_id', 'team_id'], how='left'
     )
     
-    # Fillna: Se não tem histórico específico (ex: 1º jogo em casa), usa a média geral como fallback
+    # Fillna com média geral
     for col in feature_cols:
         team_stats[f'avg_{col}_home'] = team_stats[f'avg_{col}_home'].fillna(team_stats[f'avg_{col}_general'])
         team_stats[f'avg_{col}_away'] = team_stats[f'avg_{col}_away'].fillna(team_stats[f'avg_{col}_general'])
 
-    # 4. H2H (Confronto Direto)
-    # Agrupa por par (team_id, opponent_id) e calcula média histórica
-    # Nota: H2H é simétrico em termos de "aconteceu", mas as stats são do time
+    # --- D. H2H (Confronto Direto) ---
     team_stats = team_stats.sort_values(['team_id', 'opponent_id', 'start_timestamp'])
     h2h_grouped = team_stats.groupby(['team_id', 'opponent_id'])
     
     for col in ['corners', 'corners_conceded']:
         team_stats[f'avg_{col}_h2h'] = h2h_grouped[col].transform(
-            lambda x: x.shift(1).rolling(window=3, min_periods=1).mean() # Janela menor para H2H
+            lambda x: x.shift(1).rolling(window=3, min_periods=1).mean()
         )
     
-    # Fallback para H2H: Se não tem confronto direto, usa média geral
     team_stats['avg_corners_h2h'] = team_stats['avg_corners_h2h'].fillna(team_stats['avg_corners_general'])
     team_stats['avg_corners_conceded_h2h'] = team_stats['avg_corners_conceded_h2h'].fillna(team_stats['avg_corners_conceded_general'])
 
-    # 5. Reconstrução do Dataset de Partidas
+    # 4. Reconstrução do Dataset de Partidas
     stats_home = team_stats[team_stats['is_home'] == 1].add_prefix('home_')
     stats_away = team_stats[team_stats['is_home'] == 0].add_prefix('away_')
     
@@ -121,28 +136,37 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
         stats_away, on='match_id', how='inner'
     )
     
-    # 6. Seleção e Renomeação Final das Features
-    # O modelo espera nomes específicos? Vamos criar as features finais baseadas no pedido.
+    # 5. Features de Interação (Força Relativa) - NOVO
+    # Ataque Casa vs Defesa Visitante
+    df_features['home_attack_adv'] = df_features['home_avg_corners_home'] - df_features['away_avg_corners_conceded_away']
+    # Ataque Visitante vs Defesa Casa
+    df_features['away_attack_adv'] = df_features['away_avg_corners_away'] - df_features['home_avg_corners_conceded_home']
     
-    # Média a favor do time da casa (jogando em casa) -> home_avg_corners_home
-    # Média a favor do time visitante (jogando fora) -> away_avg_corners_away
-    # Média de escanteios cedidos pelo mandante em casa -> home_avg_corners_conceded_home
-    # Média de escanteios cedidos pelo visitante fora -> away_avg_corners_conceded_away
-    # H2H -> home_avg_corners_h2h (do mandante contra esse visitante)
+    # H2H Dominance (Quem domina o confronto direto comparado à média geral)
+    df_features['home_h2h_dominance'] = df_features['home_avg_corners_h2h'] - df_features['home_avg_corners_general']
+    df_features['away_h2h_dominance'] = df_features['away_avg_corners_h2h'] - df_features['away_avg_corners_general']
     
-    # Features de Interação
-    df_features['expected_corners_h2h'] = (df_features['home_avg_corners_h2h'] + df_features['away_avg_corners_h2h']) / 2
+    # Diferença de Momentum (Quem está em melhor fase?)
+    df_features['momentum_diff'] = df_features['home_trend_corners'] - df_features['away_trend_corners']
+    
+    # Diferença de Cansaço
+    df_features['rest_diff'] = df_features['home_rest_days'] - df_features['away_rest_days']
     
     df_features['tournament_id'] = df_features['tournament_id'].astype('category')
     
-    # Limpeza de NaNs (Primeiros jogos da história)
+    # Limpeza
     df_features = df_features.dropna()
     
     # Definição de X e y
     feature_columns = [
-        # Gerais (Momentum)
+        # Gerais (Momentum) & EMA
         'home_avg_corners_general', 'away_avg_corners_general',
+        'home_ema_corners_general', 'away_ema_corners_general',
         'home_avg_corners_conceded_general', 'away_avg_corners_conceded_general',
+        
+        # Trend & Volatilidade
+        'home_trend_corners', 'away_trend_corners',
+        'home_std_corners_general', 'away_std_corners_general',
         
         # Específicas (Home/Away)
         'home_avg_corners_home', 'away_avg_corners_away',
@@ -151,13 +175,19 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
         # H2H
         'home_avg_corners_h2h', 'away_avg_corners_h2h',
         
-        # Outros
+        # Interações (Força Relativa)
+        'home_attack_adv', 'away_attack_adv',
+        'home_h2h_dominance', 'away_h2h_dominance',
+        'momentum_diff', 'rest_diff',
+        
+        # Contexto
+        'home_rest_days', 'away_rest_days',
         'home_avg_shots_general', 'away_avg_shots_general',
         'home_avg_goals_general', 'away_avg_goals_general',
         'tournament_id'
     ]
     
-    # Garante que todas as colunas existem (fill com 0 se algo falhou no merge)
+    # Garante que todas as colunas existem
     for col in feature_columns:
         if col not in df_features.columns:
             df_features[col] = 0
@@ -169,36 +199,27 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
 
 def prepare_features_for_prediction(home_id, away_id, db_manager, window_long=5):
     """
-    Prepara features para um único jogo (Predição).
+    Prepara features para um único jogo (Predição) - V3.
     """
     df = db_manager.get_historical_data()
     
-    # Filtra jogos relevantes para os times (para performance)
-    # Mas precisamos de histórico suficiente
-    # Pega todos os jogos onde home_id ou away_id jogaram
+    # Filtra jogos relevantes
     relevant_games = df[
         (df['home_team_id'] == home_id) | (df['away_team_id'] == home_id) |
         (df['home_team_id'] == away_id) | (df['away_team_id'] == away_id)
     ].copy()
     
-    if len(relevant_games) < window_long * 2:
-         # Tenta pegar mais dados se possível, ou avisa
-         pass
-
-    # Adiciona uma linha "fictícia" para o jogo atual no futuro
-    # para que o shift(1) funcione e pegue as médias até agora
+    # Adiciona dummy row para o futuro
     import time
     future_timestamp = int(time.time()) + 86400
-    
-    # Precisamos do tournament_id do último jogo desses times ou da liga
     last_tourn = relevant_games['tournament_id'].iloc[-1] if not relevant_games.empty else 'Unknown'
     
     dummy_row = pd.DataFrame([{
-        'match_id': 999999999, # Dummy ID
+        'match_id': 999999999,
         'start_timestamp': future_timestamp,
         'home_team_id': home_id,
         'away_team_id': away_id,
-        'corners_home_ft': 0, 'corners_away_ft': 0, # Dummy
+        'corners_home_ft': 0, 'corners_away_ft': 0,
         'shots_ot_home_ft': 0, 'shots_ot_away_ft': 0,
         'home_score': 0, 'away_score': 0,
         'corners_home_ht': 0, 'corners_away_ht': 0,
@@ -206,19 +227,15 @@ def prepare_features_for_prediction(home_id, away_id, db_manager, window_long=5)
         'tournament_name': 'Prediction'
     }])
     
-    # Concatena e processa
     df_combined = pd.concat([relevant_games, dummy_row], ignore_index=True)
     
-    # Gera features
+    # Gera features V3
     X, _, _ = create_advanced_features(df_combined, window_long=window_long)
     
-    # Pega a última linha (que corresponde ao jogo dummy)
     features = X.iloc[[-1]]
     
-    # Verificação de Histórico (Segurança)
-    # Se as médias forem 0 ou NaN, significa falta de dados
+    # Verificação de Histórico
     if features['home_avg_corners_general'].iloc[0] == 0 and len(relevant_games) < 5:
-         # Verifica especificamente quem tem pouco jogo
          home_games_count = len(relevant_games[(relevant_games['home_team_id'] == home_id) | (relevant_games['away_team_id'] == home_id)])
          away_games_count = len(relevant_games[(relevant_games['home_team_id'] == away_id) | (relevant_games['away_team_id'] == away_id)])
          
