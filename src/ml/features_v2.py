@@ -137,27 +137,37 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
         lambda x: x.shift(1).apply(lambda g: 1 if g > 1 else (0.5 if g == 1 else 0))
     ).fillna(0.5)  # Neutro se não há histórico
     
+    # --- B. Médias Móveis Dinâmicas (Dynamic Windows) ---
+    # Especialista: Substituir janelas fixas por múltiplas janelas
+    windows = [3, 5, 10, 20]
+    
+    for w in windows:
+        for col in feature_cols:
+            # Rolling Mean
+            team_stats[f'avg_{col}_{w}g'] = grouped[col].transform(
+                lambda x: x.shift(1).rolling(window=w, min_periods=1).mean()
+            )
+            # EMA (Exponential Moving Average)
+            team_stats[f'ema_{col}_{w}g'] = grouped[col].transform(
+                lambda x: x.shift(1).ewm(span=w, min_periods=1).mean()
+            )
+            # Volatilidade (Std Dev)
+            team_stats[f'std_{col}_{w}g'] = grouped[col].transform(
+                lambda x: x.shift(1).rolling(window=w, min_periods=2).std()
+            ).fillna(0)
+
+    # --- ALIASES DE RETROCOMPATIBILIDADE ---
+    # O código antigo espera 'avg_corners_general' (era 5 jogos) e 'avg_corners_short' (era 3 jogos)
     for col in feature_cols:
-        # --- B. Médias GERAIS (Momentum) & EMA ---
-        # Rolling Mean Long
-        team_stats[f'avg_{col}_general'] = grouped[col].transform(
-            lambda x: x.shift(1).rolling(window=window_long, min_periods=1).mean()
-        )
-        # Rolling Mean Short (para Trend)
-        team_stats[f'avg_{col}_short'] = grouped[col].transform(
-            lambda x: x.shift(1).rolling(window=window_short, min_periods=1).mean()
-        )
-        # EMA (Exponential Moving Average) - Dá mais peso ao recente
-        team_stats[f'ema_{col}_general'] = grouped[col].transform(
-            lambda x: x.shift(1).ewm(span=window_long, min_periods=1).mean()
-        )
-        # Volatilidade (Std Dev)
-        team_stats[f'std_{col}_general'] = grouped[col].transform(
-            lambda x: x.shift(1).rolling(window=window_long, min_periods=2).std()
-        ).fillna(0)
+        team_stats[f'avg_{col}_general'] = team_stats[f'avg_{col}_5g']
+        team_stats[f'avg_{col}_short'] = team_stats[f'avg_{col}_3g']
         
-        # Trend (Curto - Longo)
-        team_stats[f'trend_{col}'] = team_stats[f'avg_{col}_short'] - team_stats[f'avg_{col}_general']
+        team_stats[f'ema_{col}_general'] = team_stats[f'ema_{col}_5g']
+        team_stats[f'std_{col}_general'] = team_stats[f'std_{col}_5g']
+        
+        # Trend (Curto 3g - Longo 10g)
+        # Especialista sugere comparar curto com longo prazo real
+        team_stats[f'trend_{col}'] = team_stats[f'avg_{col}_3g'] - team_stats[f'avg_{col}_10g']
     
     # --- E. FEATURES V5 (Auditoria ML - CORRIGIDO) ---
     # CORREÇÃO: Decaimento exponencial SEM LEAKAGE
@@ -375,27 +385,45 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     df_features['home_last_result'] = df_features['home_last_result'] if 'home_last_result' in df_features.columns else 0.5
     df_features['away_last_result'] = df_features['away_last_result'] if 'away_last_result' in df_features.columns else 0.5
     
-    # Posição na Tabela (Proxy: baseado em pontos acumulados)
-    # Como não temos posição direta, usamos Win Rate recente como proxy
-    df_features['home_form_score'] = df_features['home_avg_goals_general'] * 3  # Simula pontos
-    df_features['away_form_score'] = df_features['away_avg_goals_general'] * 3
-    df_features['position_diff'] = df_features['home_form_score'] - df_features['away_form_score']
+    # Posição na Tabela (Real reconstruída)
+    if 'home_league_position' in df_features.columns and 'away_league_position' in df_features.columns:
+        # Preenche Nulos com 0 ou média (se for início de campeonato, assumimos meio de tabela simulado)
+        df_features['home_league_pos'] = df_features['home_league_position'].fillna(10)
+        df_features['away_league_pos'] = df_features['away_league_position'].fillna(10)
+        
+        # Diferença de posição (Visitante - Mandante). 
+        # Ex: Home=1, Away=10 -> Diff = 9 (Positivo = Vantagem Home)
+        # Ex: Home=10, Away=1 -> Diff = -9 (Negativo = Desvantagem Home)
+        df_features['position_diff'] = df_features['away_league_pos'] - df_features['home_league_pos']
+    else:
+        # Fallback para proxy antigo se reconstrução falhar
+        df_features['home_form_score'] = df_features['home_avg_goals_general'] * 3
+        df_features['away_form_score'] = df_features['away_avg_goals_general'] * 3
+        df_features['position_diff'] = df_features['home_form_score'] - df_features['away_form_score']
+        df_features['home_league_pos'] = 10
+        df_features['away_league_pos'] = 10
     
     # Limpeza
     df_features = df_features.dropna()
     
     # Definição de X e y
-    feature_columns = [
-        # Gerais (Momentum) & EMA
-        'home_avg_corners_general', 'away_avg_corners_general',
-        'home_ema_corners_general', 'away_ema_corners_general',
-        'home_avg_corners_conceded_general', 'away_avg_corners_conceded_general',
-        
-        # Trend & Volatilidade
+    # Definição de X e y
+    
+    # 1. Features Dinâmicas (Windows: 3, 5, 10, 20)
+    dynamic_features = []
+    for w in [3, 5, 10, 20]:
+        for team in ['home', 'away']:
+            for metric in ['corners', 'shots', 'goals', 'corners_conceded']:
+                 dynamic_features.append(f'{team}_avg_{metric}_{w}g')
+                 dynamic_features.append(f'{team}_ema_{metric}_{w}g')
+                 dynamic_features.append(f'{team}_std_{metric}_{w}g')
+
+    # 2. Features de Contexto e Específicas
+    static_features = [
+        # Trend & Volatilidade (Legacy aliases mantidos por segurança)
         'home_trend_corners', 'away_trend_corners',
-        'home_std_corners_general', 'away_std_corners_general',
         
-        # Específicas (Home/Away)
+        # Específicas (Home/Away - continuam fixas no longo prazo por enquanto)
         'home_avg_corners_home', 'away_avg_corners_away',
         'home_avg_corners_conceded_home', 'away_avg_corners_conceded_away',
         
@@ -409,25 +437,26 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
         
         # Contexto
         'home_rest_days', 'away_rest_days',
-        'home_avg_shots_general', 'away_avg_shots_general',
-        'home_avg_goals_general', 'away_avg_goals_general',
         'tournament_id',
         
         # V4 Features
         'season_stage',
         'position_diff',
+        'home_league_pos', 'away_league_pos', # Novas features explícitas
         
-        # V5 Features (Auditoria ML - Melhorias)
-        'home_decay_weighted_corners', 'away_decay_weighted_corners',  # Decaimento exponencial
-        'home_entropy_corners', 'away_entropy_corners',  # Imprevisibilidade
+        # V5 Features
+        'home_decay_weighted_corners', 'away_decay_weighted_corners',
+        'home_entropy_corners', 'away_entropy_corners',
         
-        # V6 Features (Strength of Schedule - Qualidade do Adversário)
-        'home_sos_rolling', 'away_sos_rolling',  # Força média dos oponentes enfrentados
-        'home_opponent_defense_strength', 'away_opponent_defense_strength',  # Fraqueza defensiva do adversário atual
+        # V6 Features
+        'home_sos_rolling', 'away_sos_rolling',
+        'home_opponent_defense_strength', 'away_opponent_defense_strength',
         
-        # V7 Features (Game State - Comportamento Histórico)
-        'home_desperation_index', 'away_desperation_index',  # Positivo = ataca mais quando perde
+        # V7 Features
+        'home_desperation_index', 'away_desperation_index',
     ]
+    
+    feature_columns = dynamic_features + static_features
     
     # Garante que todas as colunas existem
     for col in feature_columns:
@@ -437,7 +466,8 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     X = df_features[feature_columns]
     y = df_features['corners_home_ft'] + df_features['corners_away_ft']
     
-    return X, y, df_features['start_timestamp']
+    # Return full metadata df for odds/timestamps access
+    return X, y, df_features
 
 def prepare_features_for_prediction(home_id, away_id, db_manager, window_long=5):
     """
@@ -477,7 +507,11 @@ def prepare_features_for_prediction(home_id, away_id, db_manager, window_long=5)
     features = X.iloc[[-1]]
     
     # Verificação de Histórico
-    if features['home_avg_corners_general'].iloc[0] == 0 and len(relevant_games) < 5:
+    # Usamos janela de 5 jogos como base de presença de dados
+    col_check = 'home_avg_corners_5g' if 'home_avg_corners_5g' in features else (
+                'home_avg_corners_general' if 'home_avg_corners_general' in features else None)
+    
+    if col_check and features[col_check].iloc[0] == 0 and len(relevant_games) < 5:
          home_games_count = len(relevant_games[(relevant_games['home_team_id'] == home_id) | (relevant_games['away_team_id'] == home_id)])
          away_games_count = len(relevant_games[(relevant_games['home_team_id'] == away_id) | (relevant_games['away_team_id'] == away_id)])
          

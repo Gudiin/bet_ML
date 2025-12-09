@@ -177,7 +177,13 @@ def train_model() -> None:
     print("🔧 Gerando features avançadas (Home/Away, H2H, Momentum)...")
     
     try:
-        X, y, timestamps = create_advanced_features(df, window_short=3, window_long=5)
+        X, y, df_meta = create_advanced_features(df, window_short=3, window_long=5)
+        timestamps = df_meta['start_timestamp']
+        
+        # Extract odds if available
+        odds = None
+        if 'odds_home' in df_meta.columns:
+             odds = df_meta[['odds_home', 'odds_draw', 'odds_away']]
         
         print(f"📊 Features geradas: {X.shape[1]} colunas, {X.shape[0]} amostras")
         
@@ -194,14 +200,14 @@ def train_model() -> None:
             
             print("\n🌍 FASE 2: Transfer Learning com parâmetros otimizados...")
             tournament_ids = X['tournament_id'] if 'tournament_id' in X.columns else None
-            predictor.train_global_and_finetune(X, y, timestamps, tournament_ids)
+            predictor.train_global_and_finetune(X, y, timestamps, tournament_ids, odds=odds)
             print("\n✅ Optuna + Transfer Learning concluído!")
             
         elif use_transfer:
             # Transfer Learning: Global + Liga específica
             print("\n🌍 Iniciando Transfer Learning (Global + Por Liga)...")
             tournament_ids = X['tournament_id'] if 'tournament_id' in X.columns else None
-            predictor.train_global_and_finetune(X, y, timestamps, tournament_ids)
+            predictor.train_global_and_finetune(X, y, timestamps, tournament_ids, odds=odds)
             print("\n✅ Transfer Learning concluído!")
         elif use_optuna:
             n_trials_input = input("Quantos trials do Optuna? (padrão: 50, recomendado: 50-100): ").strip()
@@ -210,11 +216,11 @@ def train_model() -> None:
             best_params = predictor.optimize_hyperparameters(X, y, timestamps, n_trials=n_trials)
             print(f"\n✅ Melhores parâmetros encontrados: {best_params}")
             print("\n📈 Treinando modelo final com parâmetros otimizados...")
-            predictor.train_time_series_split(X, y, timestamps)
+            predictor.train_time_series_split(X, y, timestamps, odds=odds)
             print("\n✅ Modelo salvo com sucesso!")
         else:
             # Treinamento padrão
-            predictor.train_time_series_split(X, y, timestamps)
+            predictor.train_time_series_split(X, y, timestamps, odds=odds)
             print("\n✅ Modelo salvo com sucesso!")
         
     except Exception as e:

@@ -470,7 +470,7 @@ def get_match_result(match_id: str):
         return jsonify({'error': 'Partida não encontrada'}), 404
     
     # Fetch ML Prediction
-    query_ml = "SELECT prediction_value FROM predictions WHERE match_id = ? AND model_version IN ('ML', 'ML_V2') ORDER BY id DESC LIMIT 1"
+    query_ml = "SELECT prediction_value, feedback_text, fair_odds, confidence FROM predictions WHERE match_id = ? AND model_version IN ('ML', 'ML_V2') ORDER BY id DESC LIMIT 1"
     ml_pred = pd.read_sql_query(query_ml, conn, params=(match_id,))
     
     # Fetch Top 7
@@ -503,23 +503,74 @@ def get_match_result(match_id: str):
         try:
             import requests
             api_url = f"https://www.sofascore.com/api/v1/event/{match_id}"
-            headers = {'User-Agent': 'Mozilla/5.0'}
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.sofascore.com/'
+            }
             resp = requests.get(api_url, headers=headers, timeout=5)
             if resp.status_code == 200:
                 ev = resp.json().get('event', {})
-                # Busca o minuto do status
-                status_desc = ev.get('status', {}).get('description', '')
-                if status_desc:
-                    match_dict['match_minute'] = status_desc
+                status_info = ev.get('status', {})
+                
+                # Tenta múltiplas fontes para o minuto
+                match_minute = None
+                
+                # 1. Status description (ex: "45+2", "HT", "78")
+                status_desc = status_info.get('description', '')
+                if status_desc and status_desc not in ['Not started', 'Ended', '']:
+                    match_minute = status_desc
+                
+                # 2. Se não encontrou, tenta calcular pelo tempo de início
+                if not match_minute and status_info.get('type') == 'inprogress':
+                    start_ts = ev.get('startTimestamp', 0)
+                    if start_ts > 0:
+                        import time
+                        elapsed_seconds = int(time.time()) - start_ts
+                        elapsed_minutes = elapsed_seconds // 60
+                        # Ajusta para o tempo do jogo (45 min por tempo + intervalo)
+                        if elapsed_minutes <= 45:
+                            match_minute = str(elapsed_minutes)
+                        elif elapsed_minutes <= 60:  # Intervalo
+                            match_minute = "HT"
+                        elif elapsed_minutes <= 105:
+                            match_minute = str(elapsed_minutes - 15)  # Remove tempo de intervalo
+                        else:
+                            match_minute = "90+"
+                
+                if match_minute:
+                    match_dict['match_minute'] = match_minute
+                    
+                    # Determina o período do jogo
+                    match_period = "Ao Vivo"
+                    if match_minute == 'HT':
+                        match_period = "Intervalo"
+                    else:
+                        # Tenta converter para inteiro para verificar se é 1T ou 2T
+                        try:
+                            minute_val = int(match_minute.split("'")[0].replace('+', ''))
+                            if minute_val <= 45 and "2nd" not in status_desc: # Simplificação
+                                match_period = "1º Tempo"
+                            elif minute_val > 45:
+                                match_period = "2º Tempo"
+                        except:
+                            pass
+                            
+                    match_dict['match_period'] = match_period
+                
                 # Atualiza placar em tempo real
                 match_dict['home_score'] = ev.get('homeScore', {}).get('display', match_dict.get('home_score', 0))
                 match_dict['away_score'] = ev.get('awayScore', {}).get('display', match_dict.get('away_score', 0))
+                
+                print(f"✅ Live data: {match_minute} | {match_dict['home_score']}-{match_dict['away_score']}")
         except Exception as e:
             print(f"Erro ao buscar minuto ao vivo: {e}")
     
     result = {
         'match': match_dict,
         'ml_prediction': ml_pred.iloc[0]['prediction_value'] if not ml_pred.empty else None,
+        'ml_feedback': ml_pred.iloc[0]['feedback_text'] if not ml_pred.empty else None,
+        'ml_fair_odds': ml_pred.iloc[0]['fair_odds'] if not ml_pred.empty else None,
+        'ml_confidence': ml_pred.iloc[0]['confidence'] if not ml_pred.empty else None,
         'top7': top7.to_dict('records'),
         'suggestions': suggestions.to_dict('records'),
         'stats': stats.iloc[0].to_dict() if not stats.empty else None
@@ -592,16 +643,45 @@ def get_analyses():
     
     analyses = pd.read_sql_query(query, conn)
     db.close()
-    
+
     # Convert int64 to int and NaN to None for JSON serialization
     records = analyses.to_dict('records')
+    
+    # Session for reuse to improve performance
+    import requests
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.sofascore.com/'
+    })
+    
     for record in records:
         for key, value in record.items():
             if hasattr(value, 'item'):  # numpy int64/float64
                 record[key] = value.item()
             elif pd.isna(value):  # NaN to None
                 record[key] = None
-    
+        
+        # Live Data Enhancement for accurate minutes
+        if record.get('status') == 'inprogress':
+            try:
+                # Short timeout to not block UI
+                resp = session.get(f"https://www.sofascore.com/api/v1/event/{record['match_id']}", timeout=1.5)
+                if resp.status_code == 200:
+                    ev = resp.json().get('event', {})
+                    status_info = ev.get('status', {})
+                    
+                    # Get Minute
+                    desc = status_info.get('description')
+                    if desc:
+                        record['match_minute'] = desc
+                        
+                    # Update Score
+                    record['home_score'] = ev.get('homeScore', {}).get('display', record['home_score'])
+                    record['away_score'] = ev.get('awayScore', {}).get('display', record['away_score'])
+            except Exception:
+                pass # Fail silently for live data
+
     return jsonify(records)
 
 
@@ -961,7 +1041,7 @@ def _optimize_model_task(n_trials: int = 20) -> None:
     update_progress(100, 'Otimização concluída')
 
 
-def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_history: pd.DataFrame, db: DBManager) -> Dict[str, Any]:
+def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_history: pd.DataFrame, db: DBManager, home_pos: int = None, away_pos: int = None) -> Dict[str, Any]:
     """
     Lógica central de previsão e persistência (Atualizado para ML V2).
     Compartilhada entre 'Analisar Jogo' e 'Scanner'.
@@ -1038,6 +1118,23 @@ def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_his
     
     best_bet = 'Over 9.5' if ml_prediction > 10 else 'Under 10.5'
     
+    # Fair Odds & Feedback Logic (Novo)
+    fair_odd = 1.0 / confidence if confidence > 0 else 0.0
+    
+    # Feedback Text Generation
+    feedback_text = f"O modelo prevê {ml_prediction:.1f} escanteios com {confidence*100:.0f}% de confiança."
+    
+    if home_pos and away_pos:
+        feedback_text += f" Confronto: {home_name} ({home_pos}º) vs {away_name} ({away_pos}º)."
+        
+    if h_avg > 0 and a_avg > 0:
+        feedback_text += f" Média mandante: {h_avg:.1f}, Visitante: {a_avg:.1f}."
+    
+    if fair_odd < 1.85: # Assuming market odd ~1.85
+         feedback_text += f" Valor encontrado! Odd Justa ({fair_odd:.2f}) < Mercado (1.85)."
+    else:
+         feedback_text += f" Odd Justa calculada: {fair_odd:.2f}."
+
     # 5. Salvar Previsão ML
     db.save_prediction(
         match_id=match_id,
@@ -1048,6 +1145,8 @@ def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_his
         odds=1.85, 
         category='Professional',
         market_group='Corners',
+        feedback_text=feedback_text,
+        fair_odds=fair_odd,
         verbose=False
     )
 
@@ -1195,11 +1294,26 @@ def _analyze_match_task(match_id: str) -> Dict[str, Any]:
             db.close()
             return {'error': 'Banco de dados vazio'}
             
+        # 2.5 Buscar Standings (Novo)
+        t_id = details['tournament_id']
+        s_id = details['season_id']
+        home_pos, away_pos = None, None
+        
+        try:
+             standings = scraper.get_standings(t_id, s_id)
+             if standings:
+                 h_info = standings.get(details['home_id'])
+                 a_info = standings.get(details['away_id'])
+                 if h_info: home_pos = h_info['position']
+                 if a_info: away_pos = a_info['position']
+        except Exception as e:
+            print(f"Erro ao buscar standings: {e}")
+
         # 3. Processar Previsão (Lógica Unificada)
         update_progress(80, 'Calculando previsão...')
         
         try:
-            result = _process_match_prediction(details, predictor, df_history, db)
+            result = _process_match_prediction(details, predictor, df_history, db, home_pos, away_pos)
             
             if 'error' in result:
                 emit_log(f"⚠️ {result['error']}", 'warning')

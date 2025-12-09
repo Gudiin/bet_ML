@@ -1,0 +1,26 @@
+
+🏆 FINAL RECONSTRUCTED TABLE:
+Pos  Team                      P    J    V    E    D    SG  
+------------------------------------------------------------
+1    Botafogo                  79   38   23   10   5    30  
+2    Palmeiras                 73   38   22   7    9    27  
+3    Flamengo                  70   38   20   10   8    19  
+4    Fortaleza                 68   38   19   11   8    14  
+5    Internacional             65   38   18   11   9    17  
+6    São Paulo                 59   38   17   8    13   10  
+7    Corinthians               56   38   15   11   12   9   
+8    Bahia                     53   38   15   8    15   0   
+9    Cruzeiro                  52   38   14   10   14   2   
+10   Vasco da Gama             50   38   14   8    16   -13 
+11   Vitória                   47   38   13   8    17   -7  
+12   Atlético Mineiro          47   38   11   14   13   -7  
+13   Fluminense                46   38   12   10   16   -6  
+14   Grêmio                    45   38   12   9    17   -6  
+15   Juventude                 45   38   11   12   15   -11 
+16   Red Bull Bragantino       44   38   10   14   14   -4  
+17   Athletico                 42   38   11   9    18   -6  
+18   Criciúma                  38   38   9    11   18   -19 
+19   Atlético Goianiense       30   38   7    9    22   -29 
+20   Cuiabá                    30   38   6    12   20   -20 
+------------------------------------------------------------
+ℹ️  Please compare the Top 5 and Bottom 5 with the real table on Google/SofaScore.

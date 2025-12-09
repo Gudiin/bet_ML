@@ -198,7 +198,8 @@ class SofaScoreScraper:
                                 'home_team': event['homeTeam']['name'],
                                 'away_team': event['awayTeam']['name'],
                                 'start_time': datetime.datetime.fromtimestamp(evt_ts, tz=tz_offset).strftime('%Y-%m-%d %H:%M'),
-                                'status': event['status']['type']
+                                'status': event['status']['type'],
+                                'status_description': event['status'].get('description', '')
                             }
                             matches.append(match_info)
                         
@@ -346,3 +347,41 @@ class SofaScoreScraper:
             'home_score': ev.get('homeScore', {}).get('display', 0),
             'away_score': ev.get('awayScore', {}).get('display', 0)
         }
+
+    def get_standings(self, tournament_id: int, season_id: int) -> dict:
+        """Busca a tabela de classificação (Total). Retorna ditado {team_id: position}."""
+        # Type 'total' is usually the main table
+        url = f"https://www.sofascore.com/api/v1/unique-tournament/{tournament_id}/season/{season_id}/standings/total"
+        print(f"   📊 Buscando classificação (Torneio {tournament_id})...")
+        data = self._fetch_api(url)
+        
+        standings_map = {}
+        if data and 'standings' in data:
+            for group in data['standings']:
+                if group.get('type') == 'total':
+                    for row in group.get('rows', []):
+                        team_id = row['team']['id']
+                        standings_map[team_id] = {
+                            'position': row['position'],
+                            'matches': row['matches'],
+                            'wins': row['wins'],
+                            'draws': row['draws'],
+                            'losses': row['losses'],
+                            'scoresFor': row['scoresFor'],
+                            'scoresAgainst': row['scoresAgainst']
+                        }
+        return standings_map
+
+    def get_team_last_games(self, team_id: int, limit: int = 5) -> list:
+        """Busca últimos jogos de um time."""
+        url = f"https://www.sofascore.com/api/v1/team/{team_id}/events/last/0" # Page 0
+        data = self._fetch_api(url)
+        
+        last_games = []
+        if data and 'events' in data:
+            # Filter distinct tournaments if needed, but for form we take all
+            # Take only finished games
+            finished = [e for e in data['events'] if e['status']['type'] == 'finished']
+            last_games = finished[:limit]
+            
+        return last_games

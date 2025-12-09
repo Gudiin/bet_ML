@@ -130,6 +130,39 @@ class DBManager:
         except sqlite3.OperationalError:
             cursor.execute("ALTER TABLE predictions ADD COLUMN status TEXT DEFAULT 'PENDING'")
             conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            cursor.execute("SELECT feedback_text FROM predictions LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE predictions ADD COLUMN feedback_text TEXT")
+            conn.commit()
+
+        try:
+            cursor.execute("SELECT fair_odds FROM predictions LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE predictions ADD COLUMN fair_odds REAL")
+            conn.commit()
+
+        try:
+            cursor.execute("SELECT home_league_position FROM matches LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE matches ADD COLUMN home_league_position INTEGER")
+            cursor.execute("ALTER TABLE matches ADD COLUMN away_league_position INTEGER")
+            conn.commit()
+
+        # Odds Migration
+        try:
+            cursor.execute("SELECT odds_home FROM matches LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE matches ADD COLUMN odds_home REAL")
+            cursor.execute("ALTER TABLE matches ADD COLUMN odds_draw REAL")
+            cursor.execute("ALTER TABLE matches ADD COLUMN odds_away REAL")
+            cursor.execute("ALTER TABLE matches ADD COLUMN odds_provider TEXT")
+            conn.commit()
+
+        conn.commit()
 
         conn.commit()
 
@@ -252,7 +285,7 @@ class DBManager:
             'last_round': row[1] if row and row[1] else 0
         }
 
-    def save_prediction(self, match_id: int, model_version: str, value: float, label: str, confidence: float, category: str = None, market_group: str = None, odds: float = 0.0, verbose: bool = False) -> None:
+    def save_prediction(self, match_id: int, model_version: str, value: float, label: str, confidence: float, category: str = None, market_group: str = None, odds: float = 0.0, feedback_text: str = None, fair_odds: float = 0.0, verbose: bool = False) -> None:
         """
         Salva uma predição gerada pelo modelo ou análise estatística.
         
@@ -285,17 +318,17 @@ class DBManager:
                 # Atualiza em vez de duplicar
                 cursor.execute('''
                     UPDATE predictions 
-                    SET prediction_value = ?, confidence = ?, odds = ?, model_version = ?
+                    SET prediction_value = ?, confidence = ?, odds = ?, model_version = ?, feedback_text = ?, fair_odds = ?
                     WHERE id = ?
-                ''', (value, confidence, odds, model_version, existing[0]))
+                ''', (value, confidence, odds, model_version, feedback_text, fair_odds, existing[0]))
             else:
                 # Insere nova previsão
                 cursor.execute('''
                     INSERT INTO predictions (
                         match_id, model_version, prediction_value, prediction_label, 
-                        confidence, category, market_group, odds
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (match_id, model_version, value, label, confidence, category, market_group, odds))
+                        confidence, category, market_group, odds, feedback_text, fair_odds
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (match_id, model_version, value, label, confidence, category, market_group, odds, feedback_text, fair_odds))
             
             conn.commit()
             if verbose:

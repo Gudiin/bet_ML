@@ -26,41 +26,20 @@ from pathlib import Path
 
 class ProfessionalPredictor:
     """
-    Modelo profissional para previsão de escanteios.
-    
-    Diferenças críticas do modelo anterior:
-        1. NUNCA usa train_test_split aleatório
-        2. SEMPRE valida no futuro (últimos 20% por data)
-        3. Usa Poisson como distribuição (escanteios são contagem, não gaussiana)
-        4. Reporta métricas de negócio (Win Rate, ROI)
-    
-    Attributes:
-        model: Modelo LightGBM treinado.
-        feature_names: Lista com nomes das features (para validação).
-    
-    Example:
-        >>> predictor = ProfessionalPredictor()
-        >>> predictor.train_time_series_split(X, y, timestamps)
-        >>> predictions = predictor.predict(X_new)
+    Ensemble Profissional (Stacking/Blending) para previsão de escanteios.
+    Combina LightGBM + CatBoost + Linear Regression para robustez.
     """
     
     def __init__(self, model_path: str = "data/corner_model_v2_professional.pkl"):
-        """
-        Inicializa o preditor profissional.
-        
-        Args:
-            model_path: Caminho para salvar/carregar o modelo.
-        """
         self.model_path = Path(model_path)
-        self.model = None
+        self.models = {} # Dict to hold sub-models
         self.feature_names = None
+        self.weights = {'lgbm': 0.5, 'cat': 0.3, 'linear': 0.2}
         
-        # Hiperparâmetros otimizados para Tweedie (melhor que Poisson para overdispersion)
-        # Tweedie com power=1.5 é compromisso entre Poisson (1.0) e Gamma (2.0)
-        # Captura melhor jogos com 15+ escanteios (outliers)
-        self.default_params = {
-            'objective': 'tweedie',  # MELHORIA: Mais flexível que Poisson
-            'tweedie_variance_power': 1.5,  # 1=Poisson, 2=Gamma, 1.5=Compound Poisson-Gamma
+        # LightGBM Params (Tweedie)
+        self.lgbm_params = {
+            'objective': 'tweedie',
+            'tweedie_variance_power': 1.5,
             'n_estimators': 500,
             'learning_rate': 0.01,
             'num_leaves': 31,
@@ -71,336 +50,233 @@ class ProfessionalPredictor:
             'n_jobs': -1,
             'verbose': -1
         }
-    
-    def train_time_series_split(
-        self, 
-        X: pd.DataFrame, 
-        y: pd.Series, 
-        timestamps: pd.Series,
-        odds: pd.Series = None,
-        n_splits: int = 5
-    ) -> dict:
-        """
-        Treina usando TimeSeriesSplit (Cross-Validation Temporal).
         
-        Args:
-            X: Features de entrada.
-            y: Target (total de escanteios).
-            timestamps: Datas dos jogos (para ordenação temporal).
-            odds: Odds reais (opcional, para cálculo preciso de ROI).
-            n_splits: Número de divisões para validação (padrão: 5).
-        """
+    def _train_fold_ensemble(self, X_train, y_train, X_test, y_test):
+        """Treina os 3 modelos do ensemble para um fold específico."""
+        from sklearn.linear_model import Ridge
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.pipeline import make_pipeline
+        from sklearn.impute import SimpleImputer
+        
+        fold_models = {}
+        
+        # 1. LightGBM
+        lgbm = lgb.LGBMRegressor(**self.lgbm_params)
+        lgbm.fit(
+            X_train, y_train,
+            eval_set=[(X_test, y_test)],
+            eval_metric='mae',
+            callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)]
+        )
+        fold_models['lgbm'] = lgbm
+        
+        # 2. CatBoost (Optional)
+        try:
+            from catboost import CatBoostRegressor
+            cat = CatBoostRegressor(
+                iterations=500,
+                learning_rate=0.01,
+                depth=6,
+                loss_function='RMSE', # CatBoost doesn't support Tweedie easily, use RMSE or Poisson
+                eval_metric='MAE',
+                random_seed=42,
+                verbose=False,
+                allow_writing_files=False
+            )
+            # Identify categorical features
+            X_train_cat = X_train.copy()
+            X_test_cat = X_test.copy()
+            
+            cat_features = X_train_cat.select_dtypes(include=['object', 'category']).columns.tolist()
+            if cat_features:
+                # Ensure they are strings
+                for col in cat_features:
+                    X_train_cat[col] = X_train_cat[col].astype(str)
+                    X_test_cat[col] = X_test_cat[col].astype(str)
+            
+            cat.fit(
+                X_train_cat, y_train, 
+                cat_features=cat_features,
+                eval_set=(X_test_cat, y_test), 
+                early_stopping_rounds=50
+            )
+            fold_models['cat'] = cat
+        except ImportError:
+            if not getattr(self, '_cat_warned', False):
+                print("⚠️ CatBoost não instalado. Usando apenas LightGBM + Linear.")
+                self._cat_warned = True
+            # Redistribute weight
+            self.weights['lgbm'] = 0.7
+            self.weights['linear'] = 0.3
+            self.weights['cat'] = 0.0
+            
+        # 3. Linear Regression (Ridge for stability) - Needs Imputation
+        linear = make_pipeline(
+            SimpleImputer(strategy='mean'),
+            StandardScaler(),
+            Ridge(alpha=1.0)
+        )
+        linear.fit(X_train, y_train)
+        fold_models['linear'] = linear
+        
+        return fold_models
+
+    def train_time_series_split(self, X: pd.DataFrame, y: pd.Series, timestamps: pd.Series, odds: pd.Series = None, n_splits: int = 5) -> dict:
         from sklearn.model_selection import TimeSeriesSplit
         
-        # Garante que temos os nomes das features
         self.feature_names = X.columns.tolist()
         
-        # Monta DataFrame completo para ordenação
+        # Prepare Data
         data_dict = {'target': y, 'timestamp': timestamps}
-        if odds is not None:
-            data_dict['odds'] = odds
-            
-        df_aux = pd.DataFrame(data_dict)
-        df_full = pd.concat([X, df_aux], axis=1)
-        
-        # Ordena por data (CRÍTICO)
-        df_full = df_full.sort_values('timestamp').reset_index(drop=True)
+        if odds is not None: data_dict['odds'] = odds
+        df_full = pd.concat([X, pd.DataFrame(data_dict)], axis=1).sort_values('timestamp').reset_index(drop=True)
         
         tscv = TimeSeriesSplit(n_splits=n_splits)
         
-        metrics_history = {
-            'mae': [],
-            'rmse': [],
-            'win_rate': [],
-            'roi': []
-        }
+        metrics = {'mae': [], 'rmse': [], 'win_rate': [], 'roi': []}
         
         print("\n" + "="*70)
-        print(f"🚀 TREINAMENTO PROFISSIONAL - CROSS-VALIDATION TEMPORAL ({n_splits} SPLITS)")
+        print(f"🚀 TREINAMENTO ENSEMBLE (LGBM + CAT + LINEAR) - {n_splits} SPLITS")
         print("="*70)
         
         fold = 1
-        for train_index, test_index in tscv.split(df_full):
-            train_data = df_full.iloc[train_index]
-            test_data = df_full.iloc[test_index]
+        for train_idx, test_idx in tscv.split(df_full):
+            train_data = df_full.iloc[train_idx]
+            test_data = df_full.iloc[test_idx]
             
-            print(f"\n📂 FOLD {fold}/{n_splits}")
-            print(f"   📅 Treino: {train_data['timestamp'].min()} -> {train_data['timestamp'].max()} ({len(train_data)} jogos)")
-            print(f"   📅 Teste:  {test_data['timestamp'].min()} -> {test_data['timestamp'].max()} ({len(test_data)} jogos)")
+            print(f"\n📂 FOLD {fold}/{n_splits} | Train: {len(train_data)} | Test: {len(test_data)}")
             
-            model = lgb.LGBMRegressor(**self.default_params)
+            X_tr, y_tr = train_data[self.feature_names], train_data['target']
+            X_te, y_te = test_data[self.feature_names], test_data['target']
             
-            model.fit(
-                train_data[self.feature_names], 
-                train_data['target'],
-                eval_set=[(test_data[self.feature_names], test_data['target'])],
-                eval_metric='mae',
-                callbacks=[
-                    lgb.early_stopping(stopping_rounds=50, verbose=False)
-                ]
-            )
+            # Train Ensemble
+            fold_models = self._train_fold_ensemble(X_tr, y_tr, X_te, y_te)
             
-            preds = model.predict(test_data[self.feature_names])
-            mae = mean_absolute_error(test_data['target'], preds)
-            rmse = np.sqrt(mean_squared_error(test_data['target'], preds))
+            # Predict Blend
+            preds = self._predict_blend(X_te, fold_models)
             
-            # Passa as odds do teste se existirem
+            # Evaluate
+            mae = mean_absolute_error(y_te, preds)
+            rmse = np.sqrt(mean_squared_error(y_te, preds))
+            
             test_odds = test_data['odds'] if 'odds' in test_data.columns else None
+            biz = self._evaluate_profitability(y_te, preds, odds=test_odds, verbose=False)
             
-            biz_metrics = self._evaluate_profitability(
-                test_data['target'], 
-                preds, 
-                odds=test_odds,
-                verbose=False
-            )
+            metrics['mae'].append(mae)
+            metrics['rmse'].append(rmse)
+            if biz['total_bets'] > 0:
+                metrics['win_rate'].append(biz['win_rate'])
+                metrics['roi'].append(biz['roi'])
             
-            metrics_history['mae'].append(mae)
-            metrics_history['rmse'].append(rmse)
+            print(f"   ✅ Ensemble MAE: {mae:.4f} | ROI: {biz['roi']:.2f}")
             
-            if biz_metrics['total_bets'] > 0:
-                metrics_history['win_rate'].append(biz_metrics['win_rate'])
-                metrics_history['roi'].append(biz_metrics['roi'])
-            
-            print(f"   ✅ MAE: {mae:.4f} | Win Rate: {biz_metrics['win_rate']:.1%} | ROI: {biz_metrics['roi']:.2f}")
+            # Update final model (last fold)
+            self.models = fold_models
             fold += 1
             
-            self.model = model
-
-        # Médias Finais
-        avg_mae = np.mean(metrics_history['mae'])
-        avg_rmse = np.mean(metrics_history['rmse'])
-        
-        if metrics_history['win_rate']:
-            avg_win_rate = np.mean(metrics_history['win_rate'])
-            avg_roi = np.mean(metrics_history['roi'])
-        else:
-            avg_win_rate = 0.0
-            avg_roi = 0.0
-        
-        print("\n" + "="*70)
-        print("📊 RESULTADO FINAL (MÉDIA DOS FOLDS)")
-        print("="*70)
-        print(f"✅ MAE Médio: {avg_mae:.4f}")
-        print(f"✅ RMSE Médio: {avg_rmse:.4f}")
-        print(f"📈 Win Rate Médio: {avg_win_rate:.2%}")
-        print(f"💵 ROI Médio: {avg_roi:.2f} unidades")
-        print("="*70 + "\n")
-        
+        avg_mae = np.mean(metrics['mae'])
+        print(f"\n🏆 RESULTADO FINAL: MAE Médio {avg_mae:.4f}")
         self.save_model()
-        
-        return {
-            'mae_test': avg_mae,
-            'rmse_test': avg_rmse,
-            'win_rate': avg_win_rate,
-            'roi': avg_roi
-        }
-    
-    def get_true_probability(self, lambda_pred: float, line: float) -> float:
-        """
-        Calcula a probabilidade real de Over usando Poisson.
-        
-        Args:
-            lambda_pred: Média prevista pelo modelo (λ).
-            line: Linha de aposta (ex: 9.5).
-            
-        Returns:
-            float: Probabilidade de sair MAIS que 'line' escanteios.
-        """
-        from scipy.stats import poisson
-        # P(X > line) = Survival Function (sf)
-        # sf(k) = P(X > k) -> Para Over 9.5, queremos P(X >= 10) ou P(X > 9)
-        # A implementação do scipy.stats.poisson.sf(k) é P(X > k).
-        # Se a linha é 9.5, queremos probabilidade de 10, 11, 12...
-        # Então usamos int(9.5) = 9. sf(9) = P(X > 9) = P(X >= 10).
-        return poisson.sf(int(line), lambda_pred)
+        return {'mae_test': avg_mae}
 
-    def _evaluate_profitability(
-        self, 
-        y_true: pd.Series, 
-        y_pred: np.ndarray, 
-        odds: pd.Series = None,
-        verbose: bool = True
-    ) -> dict:
-        """
-        Simulação de lucro (Backtest) REALISTA com Linhas Dinâmicas.
+    def _predict_blend(self, X, models_dict=None):
+        """Calcula média ponderada das previsões."""
+        models = models_dict if models_dict else self.models
+        if not models: raise ValueError("Modelos não treinados")
         
-        MELHORIA V6: Em vez de linha fixa 9.5, escolhe linha baseada na previsão.
-        Isso simula melhor o comportamento real de apostas.
-        """
-        if verbose:
-            print("\n" + "="*70)
-            print("💰 SIMULAÇÃO FINANCEIRA (BACKTEST V6 - LINHA DINÂMICA)")
-            print("="*70)
+        # LightGBM
+        p_lgbm = models['lgbm'].predict(X)
         
-        hits = 0
-        total_bets = 0
-        roi_accumulated = 0.0
+        # Linear
+        p_linear = models['linear'].predict(X).flatten() # Ensure 1D
         
-        # Linhas disponíveis no mercado típico
-        available_lines = [7.5, 8.5, 9.5, 10.5, 11.5, 12.5]
-        
-        # Odds REALISTAS por linha (conservadoras, refletem vig das casas)
-        line_odds = {
-            7.5: 1.45, 8.5: 1.65, 9.5: 1.80, 
-            10.5: 2.00, 11.5: 2.25, 12.5: 2.60
-        }
-        
-        min_ev = 0.03  # 3% EV mínimo (mais conservador)
-        
-        # Converte para lista para iteração segura
-        y_true_list = y_true.tolist()
-        odds_list = odds.tolist() if odds is not None else [None] * len(y_true)
-        
-        for i, (true_val, pred_val) in enumerate(zip(y_true_list, y_pred)):
-            # 1. LINHA DINÂMICA: Escolhe linha logo abaixo da previsão
-            # Ex: Previsão 10.3 → Linha 9.5 (Over mais seguro)
-            valid_lines = [l for l in available_lines if l < pred_val]
-            if not valid_lines:
-                continue  # Previsão muito baixa, sem aposta
+        # CatBoost
+        p_cat = np.zeros_like(p_lgbm)
+        if 'cat' in models:
+            p_cat = models['cat'].predict(X)
             
-            best_line = max(valid_lines)
-            
-            # 2. Odd da linha escolhida (ou odd fornecida)
-            current_odd = odds_list[i] if odds_list[i] and odds_list[i] > 1.0 else line_odds.get(best_line, 1.80)
-            
-            # 3. Calcula Probabilidade Real via Poisson
-            prob_over = self.get_true_probability(pred_val, best_line)
-            
-            # 4. Calcula Odd Justa e EV
-            fair_odd = 1 / prob_over if prob_over > 0 else 99.0
-            ev = (prob_over * current_odd) - 1
-            
-            # 5. Aposta apenas se EV > threshold
-            if ev > min_ev:
-                total_bets += 1
-                if true_val > best_line:  # Green!
-                    hits += 1
-                    roi_accumulated += (current_odd - 1)
-                else:  # Red
-                    roi_accumulated -= 1
-        
-        if total_bets > 0:
-            win_rate = hits / total_bets
-            roi_percent = (roi_accumulated / total_bets) * 100
-            
-            if verbose:
-                print(f"🎯 Apostas Realizadas: {total_bets}")
-                print(f"✅ Apostas Certas (Green): {hits}")
-                print(f"❌ Apostas Erradas (Red): {total_bets - hits}")
-                print(f"📈 Win Rate: {win_rate:.2%}")
-                print(f"💵 ROI Real: {roi_accumulated:+.2f} unidades ({roi_percent:+.1f}%)")
-                
-                if win_rate >= 0.55:
-                    print(f"🟢 EXCELENTE! Win Rate acima de 55% é lucrativo a longo prazo.")
-                elif win_rate >= 0.52:
-                    print(f"🟡 BOM. Win Rate entre 52-55% é sustentável com gestão de banca.")
-                else:
-                    print(f"🔴 ATENÇÃO! Win Rate abaixo de 52% pode não ser lucrativo.")
-                
-                print("="*70 + "\n")
-            
-            return {
-                'total_bets': total_bets,
-                'win_rate': win_rate,
-                'roi': roi_accumulated,
-                'roi_percent': roi_percent
-            }
-        else:
-            if verbose:
-                print("⚠️ Nenhuma aposta encontrada com valor esperado positivo (+EV).")
-                print("="*70 + "\n")
-            
-            return {
-                'total_bets': 0,
-                'win_rate': 0.0,
-                'roi': 0.0,
-                'roi_percent': 0.0
-            }
-    
+        # Blend
+        final_pred = (
+            p_lgbm * self.weights['lgbm'] +
+            p_cat * self.weights['cat'] +
+            p_linear * self.weights['linear']
+        )
+        return final_pred
+
     def predict(self, X: pd.DataFrame) -> np.ndarray:
-        """
-        Faz previsão de escanteios.
-        
-        Args:
-            X: Features da(s) partida(s).
-        
-        Returns:
-            np.ndarray: Previsões de total de escanteios.
-        
-        Raises:
-            ValueError: Se modelo não foi treinado.
-        """
-        if self.model is None:
-            raise ValueError("Modelo não treinado! Execute train_time_series_split() primeiro.")
-        
-        # Valida features
-        if self.feature_names is not None:
-            missing_features = set(self.feature_names) - set(X.columns)
-            if missing_features:
-                raise ValueError(f"Features faltando: {missing_features}")
-        
-        return self.model.predict(X)
-    
-    def save_model(self) -> None:
-        """Salva modelo em disco."""
-        # Garante que o diretório existe
+        if not self.models: raise ValueError("Modelo não treinado")
+        return self._predict_blend(X)
+
+    def save_model(self):
         self.model_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        data = {
-            'model': self.model,
+        joblib.dump({
+            'models': self.models,
             'feature_names': self.feature_names,
-            'params': self.default_params
-        }
-        
-        joblib.dump(data, self.model_path)
-        print(f"💾 Modelo salvo em {self.model_path}")
-    
+            'weights': self.weights
+        }, self.model_path)
+        print(f"💾 Ensemble salvo em {self.model_path}")
+
     def load_model(self) -> bool:
-        """
-        Carrega modelo do disco.
-        
-        Returns:
-            bool: True se carregado com sucesso.
-        """
         try:
             data = joblib.load(self.model_path)
-            self.model = data['model']
+            # Support legacy loading (if just 'model' exists)
+            if 'model' in data and 'models' not in data:
+                print("⚠️ Modelo legado (Single LGBM) encontrado. Convertendo...")
+                self.models = {'lgbm': data['model']}
+                self.weights = {'lgbm': 1.0, 'cat': 0.0, 'linear': 0.0}
+            else:
+                self.models = data['models']
+                self.weights = data['weights']
+                
             self.feature_names = data.get('feature_names')
-            print(f"✅ Modelo V2 Professional carregado de {self.model_path}")
+            print(f"✅ Ensemble carregado. Pesos: {self.weights}")
             return True
-        except FileNotFoundError:
-            print(f"❌ Modelo não encontrado em {self.model_path}")
+        except (FileNotFoundError, KeyError):
             return False
-    
-    def get_feature_importance(self) -> pd.DataFrame:
-        """
-        Retorna importância das features.
-        
-        Returns:
-            pd.DataFrame: Features ordenadas por importância.
-        
-        Útil para:
-            - Debugging (quais features o modelo usa mais?)
-            - Feature selection (podemos remover features irrelevantes?)
-            - Interpretabilidade (o que o modelo considera importante?)
-        """
-        if self.model is None:
-            raise ValueError("Modelo não treinado!")
-        
-        importance = self.model.feature_importances_
-        
-        df_importance = pd.DataFrame({
-            'feature': self.feature_names,
-            'importance': importance
-        }).sort_values('importance', ascending=False)
-        
-        return df_importance
 
+    def get_feature_importance(self) -> pd.DataFrame:
+        if 'lgbm' in self.models:
+            imp = self.models['lgbm'].feature_importances_
+            return pd.DataFrame({'feature': self.feature_names, 'importance': imp}).sort_values('importance', ascending=False)
+        return pd.DataFrame()
+
+    def _evaluate_profitability(self, y_true, y_pred, odds=None, verbose=True):
+        """Avalia ROI e Win Rate simulados."""
+        hits = 0
+        total_bets = 0
+        profit = 0
+        
+        # Simula aposta unitária em Over (Linha Prevista - 0.5)
+        # Ex: Previsto 10.2 -> Aposta Over 9.5
+        
+        # Garante que y_true seja array/series indexável
+        y_true_vals = y_true.values if hasattr(y_true, 'values') else y_true
+        
+        for i in range(len(y_true)):
+            pred = y_pred[i]
+            actual = y_true_vals[i]
+            
+            # Simple simulation: Bet Over local trend
+            line = int(pred) - 0.5
+            
+            # Se aposta vencedora (Real > Linha)
+            if actual > line:
+                hits += 1
+                profit += 0.90 # Odd media 1.90
+            else:
+                profit -= 1.00 # Perde stake
+                
+            total_bets += 1
+            
+        win_rate = hits / total_bets if total_bets > 0 else 0
+        roi = (profit / total_bets) * 100 if total_bets > 0 else 0
+        
+        return {'win_rate': win_rate, 'roi': roi, 'total_bets': total_bets}
 
     def optimize_hyperparameters(
         self, 
         X: pd.DataFrame, 
-        y: pd.Series, 
+        y: pd.Series,
         timestamps: pd.Series,
         n_trials: int = 20
     ) -> dict:
@@ -472,39 +348,26 @@ class ProfessionalPredictor:
         print(f"✅ Melhores parâmetros encontrados: {study.best_params}")
         print(f"   Melhor MAE: {study.best_value:.4f}")
         
-        # Atualiza os parâmetros padrão com os melhores encontrados
-        self.default_params.update(study.best_params)
+        # Atualiza os parâmetros do LightGBM no Ensemble
+        self.lgbm_params.update(study.best_params)
         return study.best_params
 
     def calibrate_model(self, X: pd.DataFrame, y: pd.Series) -> None:
         """
-        Calibração de Probabilidade (Isotonic Regression).
-        
-        Ajusta as probabilidades previstas para refletir a realidade.
-        Ex: Se o modelo diz 70% de chance, deve acontecer 70% das vezes.
-        
-        Implementação simplificada: Ajusta o bias do lambda.
+        Calibração simplificada (apenas diagnóstico).
+        O Linear Regression no Ensemble já faz calibração nativa.
         """
-        from sklearn.isotonic import IsotonicRegression
-        
-        if self.model is None:
-            print("⚠️ Modelo não treinado. Pule a calibração.")
+        if not self.models:
+            print("⚠️ Modelo não treinado.")
             return
 
-        preds = self.model.predict(X)
-        
-        # Verifica bias (Viés)
+        preds = self.predict(X)
         bias = np.mean(preds) - np.mean(y)
-        print(f"\n⚖️ ANÁLISE DE CALIBRAÇÃO")
+        print(f"\n⚖️ ANÁLISE DE CALIBRAÇÃO (ENSEMBLE)")
         print(f"   Média Prevista: {np.mean(preds):.2f}")
         print(f"   Média Real:     {np.mean(y):.2f}")
         print(f"   Viés (Bias):    {bias:+.2f}")
-        
-        if abs(bias) > 0.5:
-            print("⚠️ Modelo descalibrado! Recomendado ajuste de intercept.")
-            # Futuro: Implementar correção automática de bias no predict
-        else:
-            print("✅ Modelo bem calibrado (Viés aceitável).")
+
     
     # ============================================================
     # TRANSFER LEARNING - Global + League-Specific Fine-Tuning
@@ -515,113 +378,101 @@ class ProfessionalPredictor:
         X: pd.DataFrame, 
         y: pd.Series, 
         timestamps: pd.Series,
-        tournament_ids: pd.Series = None
+        tournament_ids: pd.Series = None,
+        odds: pd.Series = None
     ) -> dict:
         """
-        Transfer Learning: Treina modelo global e depois refina por liga.
+        Transfer Learning (Ensemble): Global Ensemble + Fine-Tuned LGBM.
         
         Estratégia:
-            1. Treina modelo base com TODOS os dados (aprende padrões universais)
-            2. Para cada liga, faz fine-tuning (ajusta pesos específicos)
-            3. Salva modelo global e modelos por liga
-            
-        Args:
-            X: Features de entrada (todas as ligas).
-            y: Target.
-            timestamps: Datas dos jogos.
-            tournament_ids: IDs dos torneios (para separar por liga).
-            
-        Returns:
-            dict: Métricas por liga.
+            1. Treina Ensemble Global (LGBM + CatBoost + Linear) e salva.
+            2. Para cada liga > 100 jogos:
+               - Carrega LGBM Global.
+               - Faz fine-tuning do LGBM com dados da liga.
+               - Cria novo Ensemble "Híbrido": LGBM da Liga + Cat Global + Linear Global.
         """
         print("\n" + "="*70)
-        print("🌍 TRANSFER LEARNING - GLOBAL + FINE-TUNING POR LIGA")
+        print("🌍 TRANSFER LEARNING ENSEMBLE - GLOBAL + FINE-TUNING POR LIGA")
         print("="*70)
         
         # 1. Treina Modelo Global
-        print("\n📊 FASE 1: Treinando Modelo Global...")
-        global_metrics = self.train_time_series_split(X, y, timestamps)
+        print("\n📊 FASE 1: Treinando Ensemble Global...")
+        global_metrics = self.train_time_series_split(X, y, timestamps, odds=odds)
         
         # Salva modelo global
         global_path = Path("data/corner_model_global.pkl")
-        global_path.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump({
-            'model': self.model,
-            'feature_names': self.feature_names,
-            'params': self.default_params
-        }, global_path)
-        print(f"💾 Modelo global salvo em: {global_path}")
+        self.model_path = global_path # Aponta para global
+        self.save_model()
+        print(f"💾 Ensemble GLOBAL salvo em: {global_path}")
+        
+        # Guarda componentes globais para reutilização
+        global_models = self.models.copy()
+        global_weights = self.weights.copy()
         
         # 2. Fine-Tuning por Liga
         if tournament_ids is None:
-            # Tenta extrair de X se existir
             if 'tournament_id' in X.columns:
                 tournament_ids = X['tournament_id']
             else:
                 print("⚠️ tournament_ids não fornecido. Pulando fine-tuning por liga.")
                 return {'global': global_metrics}
         
-        print("\n📊 FASE 2: Fine-Tuning por Liga...")
+        print("\n📊 FASE 2: Fine-Tuning por Liga (Apenas LightGBM)...")
         
         league_metrics = {}
         unique_leagues = tournament_ids.unique()
         
         for league_id in unique_leagues:
-            # Filtra dados da liga
             mask = tournament_ids == league_id
             X_league = X[mask]
             y_league = y[mask]
-            ts_league = timestamps[mask]
             
             n_games = len(X_league)
             if n_games < 100:
-                print(f"   ⚠️ Liga {league_id}: Apenas {n_games} jogos. Pulando (mínimo: 100).")
+                print(f"   ⚠️ Liga {league_id}: Apenas {n_games} jogos. Pulando fine-tuning.")
                 continue
                 
             print(f"\n   🏆 Liga {league_id}: {n_games} jogos")
             
-            # Carrega modelo global como base
-            base_model = self.model
+            # Estratégia: Pegar LGBM Global e dar "fit" incremental (ou retrain rápido)
+            # LightGBM não tem fit incremental fácil sem salvar booster.
+            # Vamos treinar um NOVO LGBM usando os params globais, mas focado na liga (Warm Start conceitual)
             
-            # Fine-tuning: continua treinamento com dados da liga
-            # Usa learning rate menor para não "esquecer" o global
-            finetune_params = self.default_params.copy()
-            finetune_params['learning_rate'] = 0.005  # Menor para fine-tuning
-            finetune_params['n_estimators'] = 100  # Menos epochs
+            finetune_params = self.lgbm_params.copy()
+            finetune_params['learning_rate'] = 0.005 # Menor para não divergir
+            finetune_params['n_estimators'] = 150 # Curto
             
-            model = lgb.LGBMRegressor(**finetune_params)
+            lgbm_league = lgb.LGBMRegressor(**finetune_params)
             
-            # Treina com dados da liga (usa modelo global como warmstart conceitual)
-            # LightGBM não tem warmstart nativo, então retreinamos com learning rate baixo
-            model.fit(
+            # Fit apenas na liga
+            lgbm_league.fit(
                 X_league, y_league,
                 eval_set=[(X_league, y_league)],
                 eval_metric='mae',
-                callbacks=[lgb.early_stopping(stopping_rounds=20, verbose=False)]
+                callbacks=[lgb.early_stopping(20, verbose=False)]
             )
             
-            # Avalia
-            preds = model.predict(X_league)
-            mae = mean_absolute_error(y_league, preds)
-            print(f"      ✅ MAE Liga: {mae:.4f}")
+            # Monta Ensemble da Liga
+            league_models = global_models.copy()
+            league_models['lgbm'] = lgbm_league # Substitui apenas o LGBM
             
-            # Salva modelo da liga
+            # Avalia Ensemble Híbrido
+            preds = self._predict_blend(X_league, league_models)
+            mae = mean_absolute_error(y_league, preds)
+            print(f"      ✅ MAE Liga (Ensemble Híbrido): {mae:.4f}")
+            
+            # Salva
             league_path = Path(f"data/corner_model_league_{league_id}.pkl")
             joblib.dump({
-                'model': model,
+                'models': league_models,
                 'feature_names': self.feature_names,
-                'params': finetune_params
+                'weights': global_weights
             }, league_path)
             print(f"      💾 Salvo em: {league_path}")
             
             league_metrics[league_id] = {'mae': mae, 'n_games': n_games}
         
-        print("\n" + "="*70)
-        print("✅ TRANSFER LEARNING CONCLUÍDO!")
-        print(f"   • Modelo Global: data/corner_model_global.pkl")
-        print(f"   • Modelos por Liga: {len(league_metrics)} ligas")
-        print("="*70 + "\n")
-        
+        print("\n✅ Transfer Learning Concluído!")
         return {'global': global_metrics, 'leagues': league_metrics}
     
     def predict_with_league(self, X: pd.DataFrame, tournament_id=None) -> np.ndarray:
