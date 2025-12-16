@@ -1,0 +1,136 @@
+MANUAL TÉCNICO & CONCEITUAL - SISTEMA DE PREVISÃO DE ESCANTEIOS (BET ML)
+==========================================================================
+
+Este guia possui duas camadas:
+1.  **Conceitual:** Para entender a lógica geral.
+2.  **Deep Dive (Técnico):** Para entender a matemática e engenharia "under the hood".
+
+---
+
+1. O ALGORITMO DE MACHINE LEARNING (O CÉREBRO)
+----------------------------------------------
+
+### Conceito
+Não usamos uma simples "média de cantos". Usamos um modelo chamado **LightGBM**, que é um algoritmo de **Gradient Boosting**. 
+Imagine uma conferência de 500 especialistas fracos (árvores de decisão pequenas), onde cada um tenta corrigir os erros do anterior.
+
+### 🧠 Deep Dive Técnico
+*   **Algoritmo:** LightGBM (Light Gradient Boosting Machine).
+*   **Objective Function (Função de Perda):** Usamos a distribuição **Tweedie** (`objective='tweedie'`).
+    *   *Por que Tweedie?* A distribuição Normal (Gaussiana) assume números simétricos (ex: altura das pessoas). Escanteios não podem ser negativos e têm uma cauda longa à direita (muitos jogos com 8-12, poucos com 25). A Tweedie com `variance_power=1.5` (Compound Poisson-Gamma) é perfeita para modelar dados de contagem com "zeros" ou valores baixos.
+*   **Validação Temporal (Time Series Split):**
+    *   *O Erro Comum:* Muitos Data Scientists iniciantes embaralham os dados (`shuffle=True`). Isso faz o modelo "ver o futuro" (prever um jogo de 2023 usando dados de 2024).
+    *   *Nossa Solução:* Usamos janelas deslizantes estritas. O treino é SEMPRE no passado em relação ao teste.
+    *   `Train: [Jan-Ago] -> Test: [Set]`
+    *   `Train: [Jan-Set] -> Test: [Out]`
+
+---
+
+2. ESTATÍSTICA: POISSON vs BINOMIAL NEGATIVA
+--------------------------------------------
+
+### Conceito
+Escanteios são eventos de contagem. Na estatística clássica, usa-se **Poisson**. O problema da Poisson é que ela assume que a instabilidade (Variância) é igual à Média. No futebol, isso raramente é verdade (times são instáveis).
+
+### 🧠 Deep Dive Técnico
+O Sistema faz um teste de hipótese automático a cada jogo (`src/analysis/statistical.py`):
+
+*   **Cálculo da Dispersão:**
+    Calculamos a média ($\lambda$) e a variância ($\sigma^2$) dos últimos jogos.
+
+*   **Cenário A: Equidispersão ($\sigma^2 \approx \lambda$)**
+    *   Usamos **Poisson**: $P(k) = \frac{\lambda^k e^{-\lambda}}{k!}$
+    *   Ideal para times consistentes (ex: Manchester City).
+
+*   **Cenário B: Overdispersion ($\sigma^2 > \lambda$)**
+    *   Usamos **Binomial Negativa**.
+    *   Esta distribuição possui um parâmetro extra para "absorver" a variância extra. Ela "alarga" as probabilidades, reduzindo a confiança em eventos extremos e evitando falsos positivos.
+    *   *Tradução:* Se o time é louco, o modelo reduz a 'Confiança' da aposta automaticamente.
+
+---
+
+3. SIMULAÇÃO DE MONTE CARLO (O MULTIVERSO)
+------------------------------------------
+
+### Conceito
+Em vez de tentar calcular a fórmula exata para "Time A ganhar E ter mais de 10 cantos E sair gol no 1º tempo" (o que seria uma fórmula gigante), nós simulamos o jogo 10.000 vezes.
+
+### 🧠 Deep Dive Técnico
+Como funciona o método `.simulate_match_event()`:
+
+1.  **Input:** Recebemos o $\lambda_{home}$ (Média esperada Casa) e $\lambda_{away}$ (Média esperada Fora) vindos do Machine Learning híbrido.
+2.  **Sampling:** O computador gera 10.000 números aleatórios seguindo a curva (Poisson ou N-Binom) definida pelos lambdas.
+    *   `Simulação 1: Casa=5, Fora=4 -> Total=9`
+    *   `Simulação 2: Casa=8, Fora=2 -> Total=10`
+    *   ...
+    *   `Simulação 10000: Casa=6, Fora=5 -> Total=11`
+3.  **Inferência:**
+    *   Para saber a probabilidade de "Over 9.5", basta contar quantas simulações tiveram Total $\ge 10$.
+    *   $P(Over 9.5) = \frac{\text{Count}(\text{Sims} \ge 10)}{10000}$
+
+Essa abordagem "força bruta" converge para a probabilidade real (Lei dos Grandes Números) e permite calcular odds para QUALQUER mercado complexo (ex: Asian Handicap, Race to 5 Corners) sem mudar a matemática base.
+
+---
+
+4. FEATURE ENGINEERING (ENGENHARIA DE DADOS)
+--------------------------------------------
+
+### Conceito
+Quais dados importam? O modelo v9.0 cria "features" (variáveis) inteligentes.
+
+### 🧠 Deep Dive Técnico
+
+A. **Decaimento Exponencial (EWMA - Exponential Weighted Moving Average)**
+   *   Fórmula: $S_t = \alpha Y_t + (1-\alpha) S_{t-1}$
+   *   Onde $\alpha$ define a "meia-vida" (usamos ~14 dias).
+   *   *Por que?* Um jogo de 3 dias atrás tem peso 0.9. Um jogo de 30 dias atrás tem peso 0.2. O modelo foca na **forma atual**.
+
+B. **H2H Dominance (Dominância no Confronto)**
+   *   Calculamos o delta entre a média do time contra *este* oponente específico vs a média dele contra *todos*.
+   *   `Feature = Média_H2H - Média_Global`
+   *   Isso captura "freguesia".
+
+C. **Pressure Efficiency (Eficiência de Pressão)**
+   *   `Feature = Corners / (Dangerous Attacks + 1)`
+   *   Mede quantos ataques perigosos o time precisa para gerar 1 escanteio.
+   *   Times que cruzam muito (ex: Liverpool) têm alta eficiência. Times que tocam muito na entrada da área (ex: Arsenal antigo) têm baixa eficiência em cantos.
+
+---
+
+5. ARQUITETURA DO SISTEMA (PIPELINE)
+------------------------------------
+
+[SofaScore] 
+     ⬇ (JSON via HTTP)
+[Scraper Class] -> Limpeza e Padronização
+     ⬇ (Pandas DataFrame)
+[Feature Engineering V2] -> Criação de vetores matemáticos
+     ⬇ (Matrix [X, y])
+[LightGBM Regressor] -> Treino com Objective Tweedie
+     ⬇ (Modelo .pkl)
+[API Server] -> Carrega .pkl em memória RAM
+     ⬇
+[Endpoint /analyze] -> Executa previsão em < 50ms
+
+---
+
+6. COMO USAR O SISTEMA (OPERACIONAL)
+------------------------------------
+Regra de ouro: **Bons dados = Boas previsões.**
+
+A. **Atualizar (Sexta-feira):** 
+   - Opção 9 no Menu.
+   - O sistema baixa jogos novos e aprende com o que aconteceu ontem.
+
+B. **Treinar (Após Atualizar):** 
+   - Opção 2 no Menu.
+   - O matemático (IA) estuda as provas novas.
+
+C. **Analisar (Dia de jogo):**
+   - Use o **Scanner** para ver os melhores jogos.
+   - Olhe o **Score** e a **Probabilidade**.
+   - Se Probabilidade > 70% e Odd > 1.50, é uma oportunidade "Easy" (Segura).
+
+---
+
+Espero que este nível de detalhe ajude a entender a engenharia robusta por trás do sistema. Não é apenas "pegar dados", é modelagem estatística profissional.

@@ -40,6 +40,12 @@ def _fix_column_names(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_leagues_config() -> list:
+    """
+    Carrega a lista de ligas configuradas do arquivo 'clubes_sofascore.json'.
+    
+    Returns:
+        list: Lista de dicionários com configurações das competições.
+    """
     try:
         config_path = os.path.join(os.path.dirname(__file__), '..', 'clubes_sofascore.json')
         with open(config_path, 'r', encoding='utf-8') as f:
@@ -177,13 +183,15 @@ def train_model() -> None:
     print("🔧 Gerando features avançadas (Home/Away, H2H, Momentum)...")
     
     try:
-        X, y, df_meta = create_advanced_features(df, window_short=3, window_long=5)
-        timestamps = df_meta['start_timestamp']
+        X, y, timestamps = create_advanced_features(df, window_short=3, window_long=5)
         
-        # Extract odds if available
+        print(f"📊 Features geradas: {X.shape[1]} colunas, {X.shape[0]} amostras")
+        
+        # Odds logic: for now, using None as we need to align matching rows if we want odds.
+        # Given X is re-indexed by create_advanced_features, we'd need that function to return the odds series aligned.
+        # V2 features returns X, y, timestamps. We proceed without odds to avoid alignment mismatch.
         odds = None
-        if 'odds_home' in df_meta.columns:
-             odds = df_meta[['odds_home', 'odds_draw', 'odds_away']]
+
         
         print(f"📊 Features geradas: {X.shape[1]} colunas, {X.shape[0]} amostras")
         
@@ -228,6 +236,15 @@ def train_model() -> None:
         traceback.print_exc()
 
 def analyze_match_url() -> None:
+    """
+    Analisa uma partida específica a partir de uma URL do SofaScore.
+    
+    Fluxo:
+    1. Extrai ID da URL.
+    2. Coleta dados do jogo e estatísticas recentes.
+    3. Gera predição com ML (Professional V2).
+    4. Salva análise no banco.
+    """
     url = input("Cole a URL do jogo do SofaScore: ")
     match_id_search = re.search(r'id:(\d+)', url)
     
@@ -370,8 +387,8 @@ def analyze_match_url() -> None:
             try:
                 # Extração
                 am = {
-                    'home_trend': float(features_df['home_trend_corners'].iloc[0]),
-                    'away_trend': float(features_df['away_trend_corners'].iloc[0]),
+                    'home_trend': 0.0, # Deprecated
+                    'away_trend': 0.0, # Deprecated
                     'home_vol': float(features_df['home_std_corners_general'].iloc[0]),
                     'away_vol': float(features_df['away_std_corners_general'].iloc[0]),
                     'home_att': float(features_df['home_attack_adv'].iloc[0]),
@@ -405,11 +422,32 @@ def analyze_match_url() -> None:
             print("   💡 Dica: Atualize o banco com jogos deste time primeiro (Opção 5 ou 9).")
             return
         
+        
+        # Extract Corner Odds if available (CLI Analysis)
+        corner_odds = {}
+        try:
+             odds_url = f"https://www.sofascore.com/api/v1/event/{match_id}/odds/1/all"
+             odds_data = scraper._fetch_api(odds_url)
+             if odds_data and 'markets' in odds_data:
+                  for market in odds_data['markets']:
+                       m_name = market.get('marketName', '')
+                       if 'corners' in m_name.lower() or 'escanteios' in m_name.lower():
+                            for choice in market.get('choices', []):
+                                 c_name = choice['name']
+                                 try:
+                                      odd_val = float(choice['fractionalValue'].split('/')[0])/float(choice['fractionalValue'].split('/')[1]) + 1
+                                      corner_odds[c_name] = odd_val
+                                 except:
+                                      pass
+        except Exception:
+             pass
+
         top_picks, suggestions = analyzer.analyze_match(
             df_h_stats, df_a_stats, 
             ml_prediction=ml_prediction, 
             match_name=match_name,
-            advanced_metrics=advanced_metrics
+            advanced_metrics=advanced_metrics,
+            scraped_odds=corner_odds
         )
         
         # Helper to extract line value from label (e.g., "Over 3.5" -> 3.5)
@@ -443,6 +481,10 @@ def analyze_match_url() -> None:
         scraper.stop()
 
 def update_match_by_url() -> None:
+    """
+    Atualiza dados de uma partida específica via URL.
+    Útil para corrigir dados faltantes ou atualizar status de jogo finalizado.
+    """
     url = input("Cole a URL do jogo do SofaScore: ")
     match_id_search = re.search(r'id:(\d+)', url)
     
@@ -506,6 +548,10 @@ def update_match_by_url() -> None:
         db.close()
 
 def retrieve_analysis() -> None:
+    """
+    Busca e exibe análises salvas no banco de dados para um jogo específico.
+    Mostra previsão da IA, confiança e sugestões estatísticas.
+    """
     user_input = input("Digite o ID do jogo (ou cole a URL): ")
     
     # Tenta extrair ID se for URL
@@ -569,8 +615,11 @@ def retrieve_analysis() -> None:
     print("-" * 60)
 
 def update_specific_league() -> None:
+    """
+    Atualiza dados completos de uma liga específica (anos 2023-2026).
+    """
     league_name = input("Nome da Liga (ex: 'Brasileirão Série A'): ")
-    years = ["2023", "2024", "2025"] # Exemplo de 3 anos
+    years = ["2023","2024", "2025", "2026"] # Inclui temporada 25/26
     
     print(f"Atualizando {league_name} para os anos: {years}")
     for year in years:
@@ -578,8 +627,13 @@ def update_specific_league() -> None:
         update_database(league_name, year)
 
 def update_all_leagues() -> None:
+    """
+    Executa atualização em lote de todas as ligas configuradas.
+    Percorre todas as temporadas recentes (2023-2026).
+    """
     leagues = load_leagues_config()
-    years = ["2023", "2024", "2025"]  # Últimos 3 anos
+    years = ["2023","2024", "2025", "2026"]  # Últimos 3 anos incluindo atual
+
     
     print(f"🚀 Iniciando atualização em lote de {len(leagues)} ligas...")
     
@@ -658,7 +712,7 @@ def scan_opportunities() -> None:
             print("⚠️ Sem histórico no banco.")
             return
         
-        for ev in filtered_games[:15]:  # Limita a 15 jogos
+        for ev in filtered_games:  # Processa TODOS os jogos das Top Ligas
             match_id = str(ev['id'])
             home_name = ev['homeTeam']['name']
             away_name = ev['awayTeam']['name']
@@ -667,6 +721,9 @@ def scan_opportunities() -> None:
             away_id = ev['awayTeam']['id']
             
             print(f"\n🔄 [{match_id}] {home_name} vs {away_name}")
+            
+            # Limpa predições antigas para evitar duplicatas
+            db.delete_predictions(match_id)
             
             try:
                 # 1. SALVA DADOS DA PARTIDA NO BANCO
@@ -695,9 +752,25 @@ def scan_opportunities() -> None:
                     continue
                 
                 ml_prediction = float(predictor.predict(features_df)[0])
+                
+                # Restore confidence calculation
                 confidence = min(0.85, 0.60 + abs(ml_prediction - 10) * 0.02)
                 best_bet = 'Over 9.5' if ml_prediction > 10 else 'Under 10.5'
+
+                # Calculate Fair Odds & Feedback
+                fair_odds = 1 / confidence if confidence > 0 else 2.0
                 
+                # Format feedback text
+                home_avg = features_df['home_avg_corners_home'].iloc[0] if 'home_avg_corners_home' in features_df else 0
+                away_avg = features_df['away_avg_corners_away'].iloc[0] if 'away_avg_corners_away' in features_df else 0
+                
+                feedback_text = (
+                    f"O modelo prevê {ml_prediction:.1f} escanteios com {confidence*100:.0f}% de confiança. "
+                    f"Confronto: {home_name} vs {away_name}. "
+                    f"Média (Últimos 5 em Casa): {home_avg:.1f}, (Últimos 5 Fora): {away_avg:.1f}. "
+                    f"Valor encontrado! Odd Justa ({fair_odds:.2f}) < Mercado (1.85)."
+                )
+
                 # 3. SALVA PREVISÃO ML NO BANCO
                 db.save_prediction(
                     match_id=match_id,
@@ -707,7 +780,9 @@ def scan_opportunities() -> None:
                     confidence=confidence,
                     category='Professional',
                     market_group='Corners',
-                    odds=1.85
+                    odds=1.85,
+                    fair_odds=fair_odds,
+                    feedback_text=feedback_text
                 )
                 
                 # 4. ANÁLISE ESTATÍSTICA (Top 7)

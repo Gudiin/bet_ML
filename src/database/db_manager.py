@@ -50,9 +50,21 @@ class DBManager:
                 away_team_id INTEGER,
                 away_team_name TEXT,
                 home_score INTEGER,
-                away_score INTEGER
+                away_score INTEGER,
+                odds_home REAL,
+                odds_draw REAL,
+                odds_away REAL
             )
         ''')
+        
+        # Migração: Adiciona colunas de odds se não existirem
+        try:
+             cursor.execute("ALTER TABLE matches ADD COLUMN odds_home REAL")
+             cursor.execute("ALTER TABLE matches ADD COLUMN odds_draw REAL")
+             cursor.execute("ALTER TABLE matches ADD COLUMN odds_away REAL")
+             print("✅ Migração de schema: Colunas de odds adicionadas.")
+        except sqlite3.OperationalError:
+             pass # Colunas já existem
         
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS match_stats (
@@ -77,6 +89,8 @@ class DBManager:
                 red_cards_away INTEGER,
                 big_chances_home INTEGER,
                 big_chances_away INTEGER,
+                dangerous_attacks_home INTEGER,
+                dangerous_attacks_away INTEGER,
                 expected_goals_home REAL,
                 expected_goals_away REAL,
                 FOREIGN KEY (match_id) REFERENCES matches (match_id)
@@ -152,6 +166,15 @@ class DBManager:
             cursor.execute("ALTER TABLE matches ADD COLUMN away_league_position INTEGER")
             conn.commit()
 
+        # Dangerous Attacks Migration
+        try:
+            cursor.execute("SELECT dangerous_attacks_home FROM match_stats LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE match_stats ADD COLUMN dangerous_attacks_home INTEGER DEFAULT 0")
+            cursor.execute("ALTER TABLE match_stats ADD COLUMN dangerous_attacks_away INTEGER DEFAULT 0")
+            print("[OK] Migracao de schema: Colunas de Dangerous Attacks adicionadas.")
+            conn.commit()
+
         # Odds Migration
         try:
             cursor.execute("SELECT odds_home FROM matches LIMIT 1")
@@ -162,7 +185,35 @@ class DBManager:
             cursor.execute("ALTER TABLE matches ADD COLUMN odds_provider TEXT")
             conn.commit()
 
-        conn.commit()
+        # xG Migration
+        try:
+            cursor.execute("SELECT expected_goals_home FROM match_stats LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE match_stats ADD COLUMN expected_goals_home REAL")
+            cursor.execute("ALTER TABLE match_stats ADD COLUMN expected_goals_away REAL")
+            print("✅ Migração: Colunas xG adicionadas.")
+            conn.commit()
+
+        # Match Minute Migration (Live Data)
+        try:
+            cursor.execute("SELECT match_minute FROM matches LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE matches ADD COLUMN match_minute TEXT")
+            print("✅ Migração: Coluna match_minute adicionada.")
+            conn.commit()
+
+        # Tactical Metrics Migration (Gap Analysis)
+        tactical_cols = [
+            'blocked_shots', 'crosses', 'tackles', 'interceptions', 'clearances', 'recoveries'
+        ]
+        try:
+            cursor.execute("SELECT blocked_shots_home FROM match_stats LIMIT 1")
+        except sqlite3.OperationalError:
+            for col in tactical_cols:
+                cursor.execute(f"ALTER TABLE match_stats ADD COLUMN {col}_home INTEGER DEFAULT 0")
+                cursor.execute(f"ALTER TABLE match_stats ADD COLUMN {col}_away INTEGER DEFAULT 0")
+            print("✅ Migração: Métricas Táticas (Blocked Shots, Crosses, etc) adicionadas.")
+            conn.commit()
 
         conn.commit()
 
@@ -178,19 +229,37 @@ class DBManager:
         """
         conn = self.connect()
         cursor = conn.cursor()
+
+        # --- AUTO-MIGRATE IDS (FIREWALL) ---
+        # Garante que IDs legados do SofaScore sejam convertidos para o ID Unificado do nosso banco.
+        unified_ids = {
+            1: 17,   # Premier League
+            42: 35,  # Bundesliga
+            36: 8,   # LaLiga
+            33: 23,  # Serie A
+            4: 34    # Ligue 1
+        }
+        
+        original_id = match_data.get('tournament_id')
+        if original_id in unified_ids:
+            # print(f"🔄 Auto-Corrigindo Liga: ID {original_id} -> {unified_ids[original_id]}")
+            match_data['tournament_id'] = unified_ids[original_id]
+        # -----------------------------------
+
         try:
             cursor.execute('''
                 INSERT OR REPLACE INTO matches (
                     match_id, tournament_name, tournament_id, season_id, round, status, 
                     start_timestamp, home_team_id, home_team_name, 
-                    away_team_id, away_team_name, home_score, away_score
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    away_team_id, away_team_name, home_score, away_score, match_minute
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 match_data['id'], match_data['tournament'], match_data.get('tournament_id'),
                 match_data['season_id'], match_data.get('round'), match_data['status'], 
                 match_data['timestamp'], match_data['home_id'], match_data['home_name'],
                 match_data['away_id'], match_data['away_name'],
-                match_data['home_score'], match_data['away_score']
+                match_data['home_score'], match_data['away_score'],
+                match_data.get('match_minute')
             ))
             conn.commit()
         except Exception as e:
@@ -217,8 +286,15 @@ class DBManager:
                     possession_home, possession_away, total_shots_home, total_shots_away,
                     fouls_home, fouls_away, yellow_cards_home, yellow_cards_away,
                     red_cards_home, red_cards_away, big_chances_home, big_chances_away,
-                    expected_goals_home, expected_goals_away
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    dangerous_attacks_home, dangerous_attacks_away,
+                    expected_goals_home, expected_goals_away,
+                    blocked_shots_home, blocked_shots_away,
+                    crosses_home, crosses_away,
+                    tackles_home, tackles_away,
+                    interceptions_home, interceptions_away,
+                    clearances_home, clearances_away,
+                    recoveries_home, recoveries_away
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 match_id,
                 stats_data.get('corners_home_ft', 0), stats_data.get('corners_away_ft', 0),
@@ -231,9 +307,17 @@ class DBManager:
                 stats_data.get('yellow_cards_home', 0), stats_data.get('yellow_cards_away', 0),
                 stats_data.get('red_cards_home', 0), stats_data.get('red_cards_away', 0),
                 stats_data.get('big_chances_home', 0), stats_data.get('big_chances_away', 0),
-                stats_data.get('expected_goals_home', 0.0), stats_data.get('expected_goals_away', 0.0)
+                stats_data.get('dangerous_attacks_home', 0), stats_data.get('dangerous_attacks_away', 0),
+                stats_data.get('expected_goals_home', 0.0), stats_data.get('expected_goals_away', 0.0),
+                stats_data.get('blocked_shots_home', 0), stats_data.get('blocked_shots_away', 0),
+                stats_data.get('crosses_home', 0), stats_data.get('crosses_away', 0),
+                stats_data.get('tackles_home', 0), stats_data.get('tackles_away', 0),
+                stats_data.get('interceptions_home', 0), stats_data.get('interceptions_away', 0),
+                stats_data.get('clearances_home', 0), stats_data.get('clearances_away', 0),
+                stats_data.get('recoveries_home', 0), stats_data.get('recoveries_away', 0)
             ))
             conn.commit()
+            # print(f"DEBUG: Stats saved for match {match_id}") # Uncomment for deeper debug if needed
         except Exception as e:
             print(f"Erro ao salvar stats do jogo {match_id}: {e}")
 
@@ -251,7 +335,14 @@ class DBManager:
         query = '''
             SELECT m.*, s.corners_home_ft, s.corners_away_ft, s.corners_home_ht, s.corners_away_ht,
                    s.shots_ot_home_ft, s.shots_ot_away_ft, s.shots_ot_home_ht, s.shots_ot_away_ht,
-                   s.big_chances_home, s.big_chances_away
+                   s.big_chances_home, s.big_chances_away,
+                   s.dangerous_attacks_home, s.dangerous_attacks_away,
+                   s.blocked_shots_home, s.blocked_shots_away,
+                   s.crosses_home, s.crosses_away,
+                   s.tackles_home, s.tackles_away,
+                   s.interceptions_home, s.interceptions_away,
+                   s.clearances_home, s.clearances_away,
+                   s.recoveries_home, s.recoveries_away
             FROM matches m
             JOIN match_stats s ON m.match_id = s.match_id
             WHERE m.status = 'finished'

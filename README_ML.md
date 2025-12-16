@@ -1,124 +1,67 @@
-# 🧠 Documentação Técnica de ML (v8.0 Next Gen)
+# 🧠 O Cérebro da IA (Documentação Simplificada)
 
-Este documento detalha o funcionamento interno do **Professional Predictor v8.0**, a nova arquitetura de inteligência artificial do projeto.
+> **Versão 9.0 - "Full Data & Hardening"**
+> *Agora com dados completos da temporada 25/26 e proteção contra duplicatas.*
 
----
-
-## 1. Arquitetura do Modelo (Ensemble Híbrido)
-
-A v8.0 abandona a dependência de um único algoritmo. Utilizamos um **Weighted Stacking Ensemble** para combinar o melhor de três mundos:
-
-### Os Componentes
-
-1.  **LightGBM (Peso Variável - Principal)**
-
-    - **Função**: Captura padrões complexos e não-lineares.
-    - **Configuração**: Otimizado via Optuna (50-100 trials).
-    - **Objetivo**: `mae` (Erro Absoluto Médio).
-
-2.  **CatBoost (Peso Variável)**
-
-    - **Função**: Lida melhor com features categóricas e dados ruidosos.
-    - **Vantagem**: Menos propenso a overfitting em ligas menores.
-
-3.  **Regressão Linear (Baseline)**
-    - **Função**: "Âncora" do modelo. Impede que a IA faça previsões absurdas (ex: 20 escanteios) baseada em outliers.
-
-### A Fórmula da Previsão
-
-```math
-PrevisãoFinal = (w_1 \cdot Pred_{LGBM}) + (w_2 \cdot Pred_{CatBoost}) + (w_3 \cdot Pred_{Linear})
-```
-
-_Os pesos (w) são ajustados dinamicamente durante o treinamento global._
+Este documento explica, de forma simples, como a Inteligência Artificial "pensa" e como garantimos que ela aprenda com os dados certos.
 
 ---
 
-## 2. Transfer Learning & Estratégia Multi-League
+## 1. O Problema "Lixo Entra, Lixo Sai" (Resolvido!)
 
-Em vez de treinar modelos isolados para cada liga desde o zero (o que falha em ligas pequenas), adotamos a estratégia de **Transfer Learning**:
+Uma IA é tão boa quanto os dados que ela vê. Antes, tínhamos um problema:
+*   A IA via o passado distante (2022-2024).
+*   A IA via "ontem" (Dezembro 2025).
+*   **Mas ela não via o meio da temporada (Agosto a Novembro 2025).**
 
-1.  **Treinamento Global (A "Base de Conhecimento")**
+Isso deixava o modelo confuso.
 
-    - O modelo vê **todos os jogos** das Ligas "Big 5" (Premier League, LaLiga, Bundesliga, Serie A, Ligue 1) + Brasileirão.
-    - Ele aprende conceitos universais: _"Times perdendo por 1 gol aos 80min pressionam mais"_.
-
-2.  **Fine-Tuning (A "Especialização")**
-    - Para ligas com **>100 jogos** no histórico:
-    - Pegamos o Modelo Global e realizamos um "retreino leve" apenas com dados daquela liga.
-    - Resultado: O modelo mantém a inteligência global, mas se adapta ao estilo local (ex: futebol defensivo da Série B).
-
-> **Aviso de Segurança**: Se uma liga tem <100 jogos, o sistema pula o Fine-Tuning e usa o Modelo Global puro, garantindo robustez.
-
----
-
-## 3. Engenharia de Features (V2 - Dinâmica)
-
-Abandonamos as médias fixas. O novo motor de features (`features_v2.py`) gera **Janelas Dinâmicas** para capturar a evolução dos times.
-
-### Features Geradas (para cada time)
-
-Para cada métrica (Escanteios, Chutes, Gols, Cantos Cedidos), geramos:
-
-- **Curto Prazo (3 jogos)**: Forma atual / Momento.
-- **Médio Prazo (5 jogos)**: Tática recente.
-- **Longo Prazo (10 e 20 jogos)**: Consistência da temporada.
-
-### Features Contextuais V8
-
-- **Position Diff**: Diferença na tabela calculada dinamicamente (baseada em `form_score`).
-- **H2H Dominance**: Histórico recente entre as duas equipes.
-- **Season Progress**: (0.0 a 1.0) influencia o peso dos jogos (jogos finais valem mais).
+### ✅ O Que Fizemos na v9.0?
+Realizamos uma **"Cirurgia Completa"** no banco de dados:
+1.  **Recuperação Total (Full Update):** Baixamos TODOS os jogos da temporada atual (Agosto até hoje) para Premier League, LaLiga, Bundesliga, Serie A e Ligue 1.
+2.  **Firewall Anti-Duplicatas:** Criamos um "segurança" na porta do banco de dados. Se o sistema tentar salvar o mesmo campeonato com nomes diferentes (ex: "Premier League" ID 1 e ID 17), o firewall bloqueia e unifica tudo num lugar só.
+3.  **Resultado:** Uma linha do tempo perfeita e contínua. A IA agora assiste "o filme inteiro", não apenas cenas soltas.
 
 ---
 
-## 4. Integração de Odds Históricas
+## 2. Como a IA Decide? (O Modelo Híbrido)
 
-A v8.0 introduziu a **Validação Financeira Real**.
+Não usamos apenas uma "opinião". Nosso sistema consulta 3 "especialistas" (algoritmos) diferentes antes de dar o palpite final:
 
-### Fontes de Dados
+### 🧑‍🏫 Especialista 1: LightGBM (O Detalhista)
+*   **O que ele faz:** Olha para os detalhes finos. "O time X chuta muito quando joga em casa contra times fracos?" ou "O atacante Y cria Chance de Perigo?".
+*   **Novidade v9:** Agora ele usa a distribuição **Tweedie**, que entende melhor eventos raros (como um jogo ter 0 ou 15 escanteios).
 
-- **Estatísticas**: SofaScore (Corner/Shots/Goals).
-- **Odds**: Football-Data.co.uk (Dataset histórico curado).
-  - Odds de Fechamento da **Bet365** e **Pinnacle**.
+### 🧑‍🔬 Especialista 2: CatBoost (O Estatístico)
+*   **O que ele faz:** Foca nos números frios e categorias. Ótimo para lidar com times menores ou dados que variam muito.
 
-### O Desafio do Matching
+### 👴 Especialista 3: Regressão Linear (O Conservador)
+*   **O que ele faz:** Mantém os pés no chão. Se os outros especialistas ficarem loucos e preverem 30 escanteios, ele segura a onda baseada na média histórica.
 
-Como unimos dados de fontes diferentes? Desenvolvemos um algoritmo de **Entity Resolution**:
-
-1.  **Fuzzy Date Matching**: Tolerância de ±1 dia (resolve problemas de fuso horário UTC vs Local).
-2.  **Team Name Mapping**: Dicionário inteligente (`team_map.json`) para casos como _"Man Utd"_ vs _"Manchester United"_ ou _"Flamengo"_ vs _"Flamengo RJ"_.
-
----
-
-## 5. Avaliação de Lucratividade (ROI)
-
-O modelo não é avaliado apenas por acertar o número de escanteios (MAE), mas por **Dinheiro Gerado**.
-
-### Como calculamos o ROI?
-
-O sistema simula uma temporada passadas dia-a-dia (`TimeSeriesSplit`):
-
-1.  Esconde o resultado do jogo.
-2.  Faz a previsão.
-3.  Calcula a "Odd Justa" (1 / Probabilidade).
-4.  Se `OddCasa > OddJusta + MargemSegurança`: **Aposta Simulada**.
-5.  Verifica resultado e atualiza banca.
-
-**Resultado Atual (Validado):**
-
-- **ROI de ~14% a 18%** nas Top Ligas Europeias.
-- Isso comprova que o modelo encontra ineficiência nas casas de aposta.
+### 🤝 A Decisão Final
+O sistema dá pesos para cada especialista. Se o LightGBM estiver acertando mais ultimamente, ele ganha mais voz na decisão.
 
 ---
 
-## 6. Como reproduzir o Treinamento
+## 3. As Novas "Armas" da IA (Features)
 
-1.  Garanta que o banco `data/football_data.db` tenha dados.
-2.  Execute `python src/main.py` -> Opção **2 (Treinar Modelo)**.
-    - O modo **Optuna** é recomendado (50 trials) para calibrar os hiperparâmetros.
-3.  O modelo final será salvo como `data/corner_model_global.pkl`.
+Para prever o futuro (escanteios no jogo de hoje), a IA olha para o passado recente. Criamos novos indicadores:
+
+*   **⚠️ Dangerous Attacks (Ataques Perigosos):** Não olhamos apenas para chutes. Olhamos para quantas vezes o time chegou na área adversária com perigo.
+*   **efficiency (Eficiência):** "De cada 10 ataques perigosos, quantos viram escanteio?". Isso mostra se o time é objetivo ou só "cisca".
+*   **Pressão:** Se um time está perdendo, ele tende a atacar mais nos últimos 15 minutos. A IA sabe disso.
 
 ---
 
-**Projeto Bet - Ciência de Dados Aplicada ao Futebol**
+## 4. O Ciclo da Vitória (Como Usar)
+
+Para que tudo isso funcione na sua máquina, o processo é sagrado:
+
+1.  **Atualizar (Opção 9):** Você baixa os jogos que aconteceram ontem. O banco fica esperto.
+2.  **Treinar (Opção 2):** A IA estuda os jogos novos. Ela aprende: "Nossa, o Chelsea parou de fazer cantos em Dezembro".
+3.  **Prever (Scanner - Opção 7):** A IA olha para os jogos de amanhã e diz: "Com base no que aprendi hoje, o jogo do City tem valor!".
+
+---
+
+**Resumo:**
+Agora temos **Dados Limpos + Histórico Completo + IA Mais Inteligente**. O resultado é uma previsão muito mais confiável.

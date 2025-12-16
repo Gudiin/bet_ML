@@ -36,10 +36,11 @@ class ProfessionalPredictor:
         self.feature_names = None
         self.weights = {'lgbm': 0.5, 'cat': 0.3, 'linear': 0.2}
         
-        # LightGBM Params (Tweedie)
+        # LightGBM Params (Quant Upgrade: Tweedie Compound Poisson)
         self.lgbm_params = {
             'objective': 'tweedie',
-            'tweedie_variance_power': 1.5,
+            'tweedie_variance_power': 1.5, # Compound Poisson-Gamma (handles overdispersion)
+            'metric': 'mae',
             'n_estimators': 500,
             'learning_rate': 0.01,
             'num_leaves': 31,
@@ -65,7 +66,7 @@ class ProfessionalPredictor:
         lgbm.fit(
             X_train, y_train,
             eval_set=[(X_test, y_test)],
-            eval_metric='mae',
+            eval_metric='mae', # Keep MAE for comparability, though loss is Tweedie
             callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)]
         )
         fold_models['lgbm'] = lgbm
@@ -111,13 +112,19 @@ class ProfessionalPredictor:
             self.weights['cat'] = 0.0
             
         # 3. Linear Regression (Ridge for stability) - Needs Imputation
+        # Normalização de Features para modelos lineares
         linear = make_pipeline(
             SimpleImputer(strategy='mean'),
             StandardScaler(),
             Ridge(alpha=1.0)
         )
-        linear.fit(X_train, y_train)
+        
+        # Seleciona apenas colunas numéricas para o modelo linear para evitar erros com categóricos
+        numeric_cols = X_train.select_dtypes(include=np.number).columns.tolist()
+        linear.fit(X_train[numeric_cols], y_train)
+        
         fold_models['linear'] = linear
+        fold_models['linear_cols'] = numeric_cols
         
         return fold_models
 
@@ -127,8 +134,21 @@ class ProfessionalPredictor:
         self.feature_names = X.columns.tolist()
         
         # Prepare Data
+        # Prepare Data
+        # Ensure inputs are 1D Series to prevent ValueError: 2 in pd.concat
+        if hasattr(y, 'values'):
+             y = pd.Series(y.values.ravel(), index=X.index, name='target')
+        if hasattr(timestamps, 'values'):
+             timestamps = pd.Series(timestamps.values.ravel(), index=X.index, name='timestamp')
+
         data_dict = {'target': y, 'timestamp': timestamps}
         if odds is not None: data_dict['odds'] = odds
+        
+        # Reset indexes to avoid alignment issues between X and new Series
+        X = X.reset_index(drop=True)
+        data_dict['target'] = data_dict['target'].reset_index(drop=True)
+        data_dict['timestamp'] = data_dict['timestamp'].reset_index(drop=True)
+        
         df_full = pd.concat([X, pd.DataFrame(data_dict)], axis=1).sort_values('timestamp').reset_index(drop=True)
         
         tscv = TimeSeriesSplit(n_splits=n_splits)
@@ -160,7 +180,12 @@ class ProfessionalPredictor:
             rmse = np.sqrt(mean_squared_error(y_te, preds))
             
             test_odds = test_data['odds'] if 'odds' in test_data.columns else None
-            biz = self._evaluate_profitability(y_te, preds, odds=test_odds, verbose=False)
+            # O df_full contém todas as colunas, incluindo as odds
+            # Vamos extrair as colunas de odds do test_data
+            odds_cols = [col for col in test_data.columns if 'ODDS' in col or 'LINE' in col]
+            test_odds_df = test_data[odds_cols] if odds_cols else None
+            
+            biz = self._evaluate_profitability(y_te, preds, odds_df=test_odds_df, verbose=False)
             
             metrics['mae'].append(mae)
             metrics['rmse'].append(rmse)
@@ -177,7 +202,20 @@ class ProfessionalPredictor:
         avg_mae = np.mean(metrics['mae'])
         print(f"\n🏆 RESULTADO FINAL: MAE Médio {avg_mae:.4f}")
         self.save_model()
-        return {'mae_test': avg_mae}
+        # Recalcula métricas finais com o último fold (que é o mais recente)
+        final_preds = self._predict_blend(df_full[self.feature_names])
+        final_odds_cols = [col for col in df_full.columns if 'ODDS' in col or 'LINE' in col]
+        final_odds_df = df_full[final_odds_cols] if final_odds_cols else None
+        
+        final_biz = self._evaluate_profitability(df_full['target'], final_preds, odds_df=final_odds_df, verbose=False)
+        
+        return {
+            'mae_test': avg_mae,
+            'win_rate': final_biz['win_rate'],
+            'roi': final_biz['roi'],
+            'roi_percent': final_biz['roi_percent'],
+            'total_bets': final_biz['total_bets']
+        }
 
     def _predict_blend(self, X, models_dict=None):
         """Calcula média ponderada das previsões."""
@@ -188,7 +226,12 @@ class ProfessionalPredictor:
         p_lgbm = models['lgbm'].predict(X)
         
         # Linear
-        p_linear = models['linear'].predict(X).flatten() # Ensure 1D
+        if 'linear_cols' in models:
+             # Usa colunas salvas no treino para garantir consistência
+             p_linear = models['linear'].predict(X[models['linear_cols']]).flatten()
+        else:
+             # Fallback (legado)
+             p_linear = models['linear'].predict(X.select_dtypes(include=np.number)).flatten()
         
         # CatBoost
         p_cat = np.zeros_like(p_lgbm)
@@ -240,58 +283,169 @@ class ProfessionalPredictor:
             return pd.DataFrame({'feature': self.feature_names, 'importance': imp}).sort_values('importance', ascending=False)
         return pd.DataFrame()
 
-    def _evaluate_profitability(self, y_true, y_pred, odds=None, verbose=True):
+    def _evaluate_profitability(self, y_true, y_pred, odds_df: pd.DataFrame = None, verbose=True):
         """Avalia ROI e Win Rate simulados."""
         hits = 0
         total_bets = 0
-        profit = 0
+        profit = 0.0
+        roi = 0.0
+        # Kelly Criterion (Fractional)
+        kelly_fraction = 0.5 # Safety factor (Half-Kelly)
         
-        # Simula aposta unitária em Over (Linha Prevista - 0.5)
-        # Ex: Previsto 10.2 -> Aposta Over 9.5
+        # Simula aposta unitária em Over/Under (Linha Prevista)
+        # Aposta é feita apenas se for uma Aposta de Valor (+EV)
         
         # Garante que y_true seja array/series indexável
         y_true_vals = y_true.values if hasattr(y_true, 'values') else y_true
         
-        for i in range(len(y_true)):
-            pred = y_pred[i]
-            actual = y_true_vals[i]
-            
-            # Simple simulation: Bet Over local trend
-            line = int(pred) - 0.5
-            
-            # Se aposta vencedora (Real > Linha)
-            if actual > line:
-                hits += 1
-                profit += 0.90 # Odd media 1.90
-            else:
-                profit -= 1.00 # Perde stake
+        if odds_df is None or odds_df.empty:
+            if verbose: print("⚠️ Odds não fornecidas. Usando simulação simplificada (Odd 1.90).")
+            # Fallback para a simulação simplificada anterior (apenas para manter a compatibilidade)
+            for i in range(len(y_true)):
+                pred = y_pred[i]
+                actual = y_true_vals[i]
+                line = int(pred) - 0.5
                 
-            total_bets += 1
+                if actual > line:
+                    hits += 1
+                    profit += 0.90
+                else:
+                    profit -= 1.00
+                total_bets += 1
             
-        win_rate = hits / total_bets if total_bets > 0 else 0
-        roi = (profit / total_bets) * 100 if total_bets > 0 else 0
+            # Calculates default metrics for fallback
+            if total_bets > 0:
+                win_rate = hits / total_bets
+                roi = profit / total_bets
+            
+        else:
+            # Assumindo que odds_df tem as colunas 'O_ODDS', 'U_ODDS' e 'LINE'
+            # Se não tiver, vamos tentar inferir a partir do nome das colunas
+            
+            # 1. Tenta encontrar a linha de escanteios mais comum (e.g., 9.5)
+            line_col = next((col for col in odds_df.columns if 'LINE' in col), 'LINE')
+            over_odds_col = next((col for col in odds_df.columns if 'O' in col and 'ODDS' in col), 'O_ODDS')
+            under_odds_col = next((col for col in odds_df.columns if 'U' in col and 'ODDS' in col), 'U_ODDS')
+            
+            if line_col not in odds_df.columns or over_odds_col not in odds_df.columns:
+                raise ValueError("Odds DataFrame deve conter colunas para Linha (LINE) e Odds Over (O_ODDS).")
+            
+            # 2. Combina os dados
+            data = pd.DataFrame({
+                'y_true': y_true_vals,
+                'y_pred': y_pred,
+                'line': odds_df[line_col].fillna(9.5), # Fallback para 9.5
+                'O_odds': odds_df[over_odds_col],
+                'U_odds': odds_df[under_odds_col] if under_odds_col in odds_df.columns else 0.0
+            }).dropna(subset=['O_odds']) # Remove jogos sem odds
+            
+            total_bets = len(data)
+            
+            for index, row in data.iterrows():
+                # Linha de aposta: a linha de escanteios que o bookmaker oferece (e.g., 9.5)
+                line = row['line']
+                
+                # Previsão do modelo: probabilidade implícita para o Over (y_pred > line)
+                # Usamos a distribuição de Poisson para estimar a probabilidade P(Y > line)
+                # Como o modelo prevê a média (lambda), podemos usar a CDF de Poisson
+                from scipy.stats import poisson
+                
+                # Probabilidade do modelo para o Over (Y > line)
+                # P(Y > line) = 1 - P(Y <= line)
+                model_prob_over = 1 - poisson.cdf(k=line, mu=row['y_pred'])
+                
+                # Probabilidade do modelo para o Under (Y <= line)
+                model_prob_under = poisson.cdf(k=line, mu=row['y_pred'])
+                
+                # Odds do Bookmaker
+                odd_over = row['O_odds']
+                odd_under = row['U_odds']
+                
+                # Probabilidade Implícita do Bookmaker (para Odd Over)
+                bookie_prob_over = 1 / odd_over
+                
+                # 3. Regra de Aposta de Valor (+EV) com Kelly Criterion
+                stake = 0.0
+                bet_result = 0.0 # Unidades ganhas/perdidas
+                
+                # Over (+EV)
+                if model_prob_over > bookie_prob_over * 1.05:
+                    # Kelly Formula: f* = (bp - q) / b
+                    # b = odds - 1
+                    # p = model_prob_over
+                    # q = 1 - p
+                    b = odd_over - 1
+                    p = model_prob_over
+                    q = 1 - p
+                    
+                    full_kelly = (b * p - q) / b
+                    stake = full_kelly * kelly_fraction
+                    stake = max(0, stake) # No negative bets
+                    stake = min(stake, 0.05) # Max 5% bankroll cap
+                    
+                    if row['y_true'] > line:
+                         bet_result = stake * (odd_over - 1.0)
+                         hits += 1
+                    else:
+                         bet_result = -stake
+                         
+                # Under (+EV)
+                elif odd_under > 1.0 and model_prob_under > (1 / odd_under) * 1.05:
+                    bookie_prob_under = 1 / odd_under
+                    b = odd_under - 1
+                    p = model_prob_under
+                    q = 1 - p
+                    
+                    full_kelly = (b * p - q) / b
+                    stake = full_kelly * kelly_fraction
+                    stake = max(0, stake) 
+                    stake = min(stake, 0.05)
+                    
+                    if row['y_true'] <= line:
+                         bet_result = stake * (odd_under - 1.0)
+                         hits += 1
+                    else:
+                         bet_result = -stake
+
+                if stake > 0:
+                    profit += bet_result
+                    total_bets += 1 # Conta apenas apostas feitas
+                    
+            # Recalcula total de apostas (apenas as +EV)
+            total_bets_ev = 0
+            for index, row in data.iterrows():
+                line = row['line']
+                model_prob_over = 1 - poisson.cdf(k=line, mu=row['y_pred'])
+                odd_over = row['O_odds']
+                bookie_prob_over = 1 / odd_over
+                
+                # Verifica Over +EV
+                if model_prob_over > bookie_prob_over * 1.05:
+                    total_bets_ev += 1
+                # Verifica Under +EV
+                elif row['U_odds'] > 1.0 and (1 - model_prob_over) > (1 / row['U_odds']) * 1.05:
+                    total_bets_ev += 1
+            
+            total_bets = total_bets_ev # Total de apostas de valor feitas
+            
+            # Recalcula Win Rate e ROI com o novo total_bets
+            win_rate = hits / total_bets if total_bets > 0 else 0
+            roi = profit / total_bets if total_bets > 0 else 0 # ROI em unidades por aposta
+            
+            if verbose: print(f"   Simulação +EV: {total_bets} apostas feitas. Lucro: {profit:.2f} unidades.")
+            
+        roi_percent = roi * 100
         
-        return {'win_rate': win_rate, 'roi': roi, 'total_bets': total_bets}
+        return {'win_rate': win_rate, 'roi': roi, 'roi_percent': roi_percent, 'total_bets': total_bets}
+
 
     def optimize_hyperparameters(
-        self, 
-        X: pd.DataFrame, 
-        y: pd.Series,
-        timestamps: pd.Series,
-        n_trials: int = 20
-    ) -> dict:
+        self, X: pd.DataFrame, y: pd.Series, timestamps: pd.Series, n_trials: int = 50
+    ):
         """
-        Otimiza hiperparâmetros usando Optuna (AutoML).
-        
-        Args:
-            X: Features.
-            y: Target.
-            timestamps: Datas (para validação temporal).
-            n_trials: Número de tentativas (default: 20).
-            
-        Returns:
-            dict: Melhores parâmetros encontrados.
+        Otimiza hiperparâmetros do LightGBM usando Optuna.
         """
+
         try:
             import optuna
             from sklearn.model_selection import TimeSeriesSplit
@@ -311,7 +465,8 @@ class ProfessionalPredictor:
         
         def objective(trial):
             params = {
-                'objective': 'poisson',
+                'objective': 'tweedie',
+                'tweedie_variance_power': trial.suggest_float('tweedie_variance_power', 1.05, 1.95),
                 'metric': 'mae',
                 'verbosity': -1,
                 'boosting_type': 'gbdt',

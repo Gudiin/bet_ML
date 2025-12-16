@@ -141,6 +141,54 @@ class StatisticalAnalyzer:
         
         return weights
 
+    @staticmethod
+    def calculate_ev(probability: float, odds: float) -> float:
+        """
+        Calcula o Valor Esperado (+EV) de uma aposta.
+        
+        Args:
+            probability: Probabilidade estimada pelo modelo (0.0 a 1.0)
+            odds: Odd oferecida pela casa
+            
+        Returns:
+            float: Valor Esperado em % (ex: 5.0 para 5% de valor)
+        """
+        if odds <= 1.0:
+            return -100.0
+        
+        # Fórmula EV: (Prob * Odds) - 1
+        ev = (probability * odds) - 1
+        return ev * 100
+
+    @staticmethod
+    def calculate_kelly(probability: float, odds: float, fraction: float = 0.25) -> float:
+        """
+        Calcula a gestão de banca sugerida pelo Critério de Kelly (Fracionário).
+        
+        Args:
+            probability: Probabilidade estimada (0.0 a 1.0)
+            odds: Odd Decimal
+            fraction: Fração do Kelly (padrão 1/4 Kelly para segurança)
+            
+        Returns:
+            float: Porcentagem da banca a apostar (0.0 a 100.0)
+        """
+        if odds <= 1.0:
+            return 0.0
+            
+        b = odds - 1
+        q = 1 - probability
+        p = probability
+        
+        # Kelly: (bp - q) / b
+        f = (b * p - q) / b
+        
+        # Ajuste fracionário e proibe negativos
+        recommendation = max(0, f) * fraction
+        
+        # Cap de segurança (ex: nunca apostar mais de 5% da banca)
+        return min(recommendation * 100, 5.0)
+
     def calculate_hybrid_lambda(
         self,
         ia_prediction: float,
@@ -461,7 +509,7 @@ class StatisticalAnalyzer:
 
     def analyze_match(self, df_home: pd.DataFrame, df_away: pd.DataFrame, 
                      ml_prediction: float = None, match_name: str = None,
-                     advanced_metrics: dict = None) -> tuple:
+                     advanced_metrics: dict = None, scraped_odds: dict = None) -> tuple:
         """
         Executa análise estatística completa de uma partida.
         
@@ -470,77 +518,12 @@ class StatisticalAnalyzer:
         
         Args:
             df_home: DataFrame com histórico do mandante.
-                    Colunas: corners_ft, corners_ht, corners_2t, shots_ht
             df_away: DataFrame com histórico do visitante.
-                    Colunas: corners_ft, corners_ht, corners_2t, shots_ht
             ml_prediction: Previsão do modelo ML para alinhamento.
-            match_name: Nome da partida para exibição (ex: \"Flamengo vs Palmeiras\").
-            advanced_metrics: Dicionário com métricas avançadas da IA (opcional).
-                    Keys esperadas:
-                    - home_avg_corners_home: Média mandante em casa
-                    - away_avg_corners_away: Média visitante fora
-                    - home_avg_corners_conceded_home: Escanteios cedidos mandante em casa
-                    - away_avg_corners_conceded_away: Escanteios cedidos visitante fora
-                    - home_avg_corners_h2h: Média H2H mandante
-                    - away_avg_corners_h2h: Média H2H visitante
-                    - home_avg_corners_general: Momentum mandante
-                    - away_avg_corners_general: Momentum visitante
-        
-        Returns:
-            list: Top 7 oportunidades ordenadas por Score:
-                  [{'Mercado': str, 'Seleção': str, 'Prob': float, 
-                    'Odd': float, 'Score': float, 'Tipo': str}, ...]
-        
-        Lógica:
-            1. Define mercados a analisar (9 mercados diferentes)
-            2. Para cada mercado:
-               a) Calcula lambda ajustado (média ponderada 60/40)
-               b) Calcula variância histórica
-               c) Executa Monte Carlo com 10.000 simulações
-               d) Calcula probabilidade para cada linha
-               e) Converte em odd justa e score
-            3. Ordena por score e retorna Top 7
-            4. Gera sugestões por nível de risco
-        
-        Cálculo do Lambda Ajustado:
-            ```
-            λ_ajustado = 0.6 * média_todos_jogos + 0.4 * média_últimos_5
-            ```
-            Isso dá mais peso aos jogos recentes (forma atual).
-        
-        Cálculo do Score:
-            ```
-            Score = Probabilidade * (1 - CV * fator)
-            onde:
-                CV = σ / μ (Coeficiente de Variação)
-                fator = 0.3 para Over, 0.5 para Under
-            ```
-            Score penaliza alta variância (resultados imprevisíveis).
-        
-        Filtros de Qualidade:
-            - Over: Odd justa entre 1.20 e 3.00
-            - Under: Odd justa entre 1.20 e 2.50
-        
-        Mercados Analisados:
-            1. JOGO COMPLETO: Over/Under 8.5, 9.5, 10.5, 11.5, 12.5
-            2. TOTAL MANDANTE: Over/Under 4.5, 5.5, 6.5
-            3. TOTAL VISITANTE: Over/Under 3.5, 4.5, 5.5
-        Executa a análise completa de uma partida, orquestrando as simulações.
-        
-        Args:
-            df_home (pd.DataFrame): Histórico de jogos do time mandante.
-            df_away (pd.DataFrame): Histórico de jogos do time visitante.
-            ml_prediction (float, optional): Previsão da IA para o jogo.
-            match_name (str, optional): Nome do confronto para exibição.
-            
-        Returns:
-            tuple: (top_picks, suggestions)
-                   - top_picks: Lista com as 7 melhores oportunidades.
-                   - suggestions: Dicionário com sugestões Easy/Medium/Hard.
+            match_name: Nome da partida.
+            advanced_metrics: Métricas avançadas da IA.
+            scraped_odds: Dict com odds raspadas do bookmaker (ex: {'Over 9.5': 1.85}).
         """
-        # ... (código existente de cálculo de médias e simulações) ...
-        # Nota: O código abaixo é mantido da implementação original, apenas documentado.
-        
         # 1. Extração de Estatísticas Básicas
         # Calculamos médias e variâncias para alimentar as simulações
         
@@ -561,7 +544,6 @@ class StatisticalAnalyzer:
         
         # Lógica de Integração IA + Estatística (NÍVEL 2 - HÍBRIDO)
         # ------------------------------------------------------------
-        # Agora usamos as 5 métricas avançadas + previsão da IA para calcular lambdas
         
         if advanced_metrics is not None and ml_prediction is not None and ml_prediction > 0:
             # 🚀 MODO HÍBRIDO: Usa as métricas avançadas da feature engineering
@@ -581,27 +563,12 @@ class StatisticalAnalyzer:
             # 🤖 MODO LEGADO: Apenas IA, sem métricas avançadas
             historical_avg = mean_h + mean_a
             if historical_avg > 0:
-                # Clamper de segurança
-                max_deviation = 0.30
-                lower_bound = historical_avg * (1 - max_deviation)
-                upper_bound = historical_avg * (1 + max_deviation)
-                
-                ml_prediction_clamped = np.clip(ml_prediction, lower_bound, upper_bound)
-                
-                if ml_prediction_clamped != ml_prediction:
-                    print(f"{Colors.RED}⚠️ CLAMPER ATIVADO!{Colors.RESET}")
-                    print(f"   ML original: {ml_prediction:.2f} → Ajustado: {ml_prediction_clamped:.2f}")
-                
                 prop_h = mean_h / historical_avg
-                mean_h = ml_prediction_clamped * prop_h
-                mean_a = ml_prediction_clamped * (1 - prop_h)
-                
-                print(f"{Colors.YELLOW}🤖 Usando Previsão ML (Legado): {ml_prediction_clamped:.2f}{Colors.RESET}")
+                mean_h = ml_prediction * prop_h
+                mean_a = ml_prediction * (1 - prop_h)
             else:
                 mean_h = ml_prediction / 2
                 mean_a = ml_prediction / 2
-        else:
-            print(f"{Colors.CYAN}📊 Usando Média Histórica ({mean_h + mean_a:.2f}) para Monte Carlo{Colors.RESET}")
         
         sim_total = self.simulate_match_event(mean_h, mean_a, var_h, var_a)
         
@@ -612,25 +579,40 @@ class StatisticalAnalyzer:
         sim_ht = self.simulate_match_event(mean_h_ht, mean_a_ht, var_h_ht, var_a_ht)
         
         # Simula Totais Individuais
-        # Usamos apenas a média/variância do próprio time
         sim_home_total = self.monte_carlo_simulation(mean_h, var_h)
         sim_away_total = self.monte_carlo_simulation(mean_a, var_a)
-
+        
         # Análise de Mercados
-        # -------------------
         markets = []
         
         # Função auxiliar para adicionar mercado analisado
         def add_market(name, simulations, line, type_='Over'):
             count = np.sum(simulations > line) if type_ == 'Over' else np.sum(simulations < line)
-            prob = count / self.n_simulations
-            if prob > 0.01: # Evita divisão por zero e odds infinitas
-                odd_justa = 1 / prob
+            prob = count / self.n_simulations # 10000 simulações
+            
+            if prob > 0.01: 
+                fair_odd = 1 / prob
+                
+                # Busca odd do bookmaker se disponível
+                selection_key = f"{type_} {line}" # Ex: "Over 9.5"
+                bookmaker_odd = 0.0
+                ev = 0.0
+                kelly = 0.0
+                
+                if scraped_odds and selection_key in scraped_odds:
+                    bookmaker_odd = scraped_odds[selection_key]
+                    ev = self.calculate_ev(prob, bookmaker_odd)
+                    kelly = self.calculate_kelly(prob, bookmaker_odd)
+                
                 markets.append({
                     'Mercado': name,
-                    'Seleção': f"{type_} {line}",
+                    'Seleção': selection_key,
                     'Prob': prob,
-                    'Odd': odd_justa
+                    'FairOdd': fair_odd,
+                    'Odd': bookmaker_odd if bookmaker_odd > 0 else fair_odd, # Usa Fair se não tiver Book
+                    'IsBookmaker': bookmaker_odd > 0,
+                    'EV': ev,
+                    'Kelly': kelly
                 })
 
         # Define as linhas padrão a serem analisadas

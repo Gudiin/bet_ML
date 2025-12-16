@@ -95,29 +95,34 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     # ---------------------------------------------------
     
     # 2. Estratégia "Team-Centric" (Transforma Partida em Linhas de Time)
-    cols_metrics = ['corners_ft', 'shots_ot_ft', 'goals_ft', 'corners_ht']
+    cols_metrics = ['corners_ft', 'shots_ot_ft', 'goals_ft', 'corners_ht', 'dangerous_attacks_ft']
     
     # Home Stats
-    df_home = df[['match_id', 'start_timestamp', 'home_team_id', 'away_team_id'] + [f'corners_home_ft', 'shots_ot_home_ft', 'home_score', 'corners_home_ht', 'corners_away_ft']].copy()
-    df_home.columns = ['match_id', 'start_timestamp', 'team_id', 'opponent_id', 'corners', 'shots', 'goals', 'corners_ht', 'corners_conceded']
+    df_home = df[['match_id', 'start_timestamp', 'home_team_id', 'away_team_id'] + [f'corners_home_ft', 'shots_ot_home_ft', 'home_score', 'corners_home_ht', 'corners_away_ft', 'dangerous_attacks_home']].copy()
+    df_home.columns = ['match_id', 'start_timestamp', 'team_id', 'opponent_id', 'corners', 'shots', 'goals', 'corners_ht', 'corners_conceded', 'dangerous_attacks']
     df_home['is_home'] = 1
     
     # Away Stats
-    df_away = df[['match_id', 'start_timestamp', 'away_team_id', 'home_team_id'] + [f'corners_away_ft', 'shots_ot_away_ft', 'away_score', 'corners_away_ht', 'corners_home_ft']].copy()
-    df_away.columns = ['match_id', 'start_timestamp', 'team_id', 'opponent_id', 'corners', 'shots', 'goals', 'corners_ht', 'corners_conceded']
+    df_away = df[['match_id', 'start_timestamp', 'away_team_id', 'home_team_id'] + [f'corners_away_ft', 'shots_ot_away_ft', 'away_score', 'corners_away_ht', 'corners_home_ft', 'dangerous_attacks_away']].copy()
+    df_away.columns = ['match_id', 'start_timestamp', 'team_id', 'opponent_id', 'corners', 'shots', 'goals', 'corners_ht', 'corners_conceded', 'dangerous_attacks']
     df_away['is_home'] = 0
     
     # Stack de todos os jogos na visão do time
     team_stats = pd.concat([df_home, df_away]).sort_values(['team_id', 'start_timestamp'])
     
+    # Robustez: Garante que start_timestamp é datetime para evitar erro .dt accessor
+    if not np.issubdtype(team_stats['start_timestamp'].dtype, np.datetime64):
+         team_stats['start_timestamp'] = pd.to_datetime(team_stats['start_timestamp'], unit='s')
+    
     # 3. Engenharia Vetorizada
     grouped = team_stats.groupby('team_id')
     
-    feature_cols = ['corners', 'shots', 'goals', 'corners_conceded']
+    feature_cols = ['corners', 'shots', 'goals', 'corners_conceded', 'dangerous_attacks']
     
     # --- A. Features Temporais (Rest Days) ---
     team_stats['prev_timestamp'] = grouped['start_timestamp'].shift(1)
-    team_stats['rest_days'] = (team_stats['start_timestamp'] - team_stats['prev_timestamp']) / 86400
+    # Fix: Convert Timedelta to float days
+    team_stats['rest_days'] = (team_stats['start_timestamp'] - team_stats['prev_timestamp']).dt.total_seconds() / 86400
     team_stats['rest_days'] = team_stats['rest_days'].fillna(7) # Fallback: 7 dias de descanso
     # Clip para evitar outliers (ex: 100 dias de pausa)
     team_stats['rest_days'] = team_stats['rest_days'].clip(0, 14)
@@ -143,11 +148,12 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     
     for w in windows:
         for col in feature_cols:
-            # Rolling Mean
-            team_stats[f'avg_{col}_{w}g'] = grouped[col].transform(
-                lambda x: x.shift(1).rolling(window=w, min_periods=1).mean()
-            )
-            # EMA (Exponential Moving Average)
+            # Rolling Mean (REMOVIDO - NOISE REDUCTION V1)
+            # team_stats[f'avg_{col}_{w}g'] = grouped[col].transform(
+            #     lambda x: x.shift(1).rolling(window=w, min_periods=1).mean()
+            # )
+            
+            # EMA (Exponential Moving Average) - MANTIDO (SIGNAL)
             team_stats[f'ema_{col}_{w}g'] = grouped[col].transform(
                 lambda x: x.shift(1).ewm(span=w, min_periods=1).mean()
             )
@@ -156,67 +162,66 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
                 lambda x: x.shift(1).rolling(window=w, min_periods=2).std()
             ).fillna(0)
 
-    # --- ALIASES DE RETROCOMPATIBILIDADE ---
-    # O código antigo espera 'avg_corners_general' (era 5 jogos) e 'avg_corners_short' (era 3 jogos)
+    # --- ALIASES DE RETROCOMPATIBILIDADE (ATUALIZADOS PARA EMA) ---
+    # O código antigo espera 'avg_corners_general', mas agora usamos EMA
     for col in feature_cols:
-        team_stats[f'avg_{col}_general'] = team_stats[f'avg_{col}_5g']
-        team_stats[f'avg_{col}_short'] = team_stats[f'avg_{col}_3g']
+        # mapeia avg -> ema (Noise Reduction)
+        team_stats[f'avg_{col}_general'] = team_stats[f'ema_{col}_5g']
+        team_stats[f'avg_{col}_short'] = team_stats[f'ema_{col}_3g']
         
         team_stats[f'ema_{col}_general'] = team_stats[f'ema_{col}_5g']
         team_stats[f'std_{col}_general'] = team_stats[f'std_{col}_5g']
         
         # Trend (Curto 3g - Longo 10g)
         # Especialista sugere comparar curto com longo prazo real
-        team_stats[f'trend_{col}'] = team_stats[f'avg_{col}_3g'] - team_stats[f'avg_{col}_10g']
+        # REDUNDANTE: Removido pois o modelo aprende a diferença entre curto/longo sozinho
+        # team_stats[f'trend_{col}'] = team_stats[f'avg_{col}_3g'] - team_stats[f'avg_{col}_10g']
     
     # --- E. FEATURES V5 (Auditoria ML - CORRIGIDO) ---
     # CORREÇÃO: Decaimento exponencial SEM LEAKAGE
     # Em vez de usar max_timestamp global (que inclui futuro), calculamos
     # o decaimento relativo ao timestamp do PRÓPRIO jogo atual
     
-    def calculate_decay_weighted_avg(group):
-        """
-        Calcula média ponderada por decaimento SEM leakage.
-        Para cada jogo, usa apenas jogos ANTERIORES.
-        """
-        group = group.sort_values('start_timestamp').copy()
-        result = []
-        
-        for idx in range(len(group)):
-            current_ts = group.iloc[idx]['start_timestamp']
-            
-            # Pega apenas jogos ANTERIORES (strict temporal order)
-            if idx == 0:
-                result.append(np.nan)
-                continue
-            
-            prev_games = group.iloc[:idx].copy()
-            
-            # Calcula dias desde cada jogo anterior até o jogo atual
-            prev_games['days_ago'] = (current_ts - prev_games['start_timestamp']) / 86400
-            
-            # Aplica peso de decaimento
-            prev_games['weight'] = prev_games['days_ago'].apply(
-                lambda d: exponential_decay_weight(d, half_life=14.0)
-            )
-            
-            # Média ponderada (últimos 5 jogos para eficiência)
-            recent = prev_games.tail(5)
-            if len(recent) > 0 and recent['weight'].sum() > 0:
-                weighted_avg = (recent['corners'] * recent['weight']).sum() / recent['weight'].sum()
-                result.append(weighted_avg)
-            else:
-                result.append(np.nan)
-        
-        return pd.Series(result, index=group.index)
+    # --- E. FEATURES V5 (Auditoria ML - CORRIGIDO VETORIZADO) ---
+    # CORREÇÃO V2: Vectorized Exponential Decay usando Pandas EWM
+    # Complexidade: de O(N^2) para O(N)
     
-    team_stats['decay_weighted_corners'] = grouped.apply(calculate_decay_weighted_avg).reset_index(level=0, drop=True)
+    def calculate_decay_weighted_avg_vectorized(group):
+        # Garante ordenação temporal - group here is a DataFrame because we apply on grouped df
+        group = group.sort_values('start_timestamp')
+        
+        try:
+             times = pd.to_datetime(group['start_timestamp'], unit='s')
+        except Exception:
+             return group['corners'].ewm(halflife=5).mean().shift(1)
+             
+        weighted_avg = group['corners'].ewm(halflife='14 days', times=times).mean().shift(1)
+        return weighted_avg
+    
+    # Revert to passing the full dataframe group to access 'start_timestamp'
+    decay_result = grouped.apply(calculate_decay_weighted_avg_vectorized, include_groups=False)
+    
+    # Extract Series from result
+    if isinstance(decay_result, pd.Series):
+        decay_series = decay_result
+    else:
+        # Fallback if it returns a DataFrame (unlikely with this return)
+        decay_series = decay_result.iloc[:, 0]
+
+    # Garante alinhamento de índice
+    if decay_series.index.nlevels > 1:
+        decay_series = decay_series.reset_index(level=0, drop=True)
+        
+    team_stats['decay_weighted_corners'] = decay_series
     team_stats['decay_weighted_corners'] = team_stats['decay_weighted_corners'].fillna(team_stats['avg_corners_general'])
     
     # Entropia (imprevisibilidade) - alta = time instável
-    team_stats['entropy_corners'] = grouped['corners'].transform(
-        lambda x: x.shift(1).rolling(window=10, min_periods=3).apply(calculate_entropy, raw=False)
-    ).fillna(0.5)
+    # OPTIMIZATION: Rolling apply with custom python function is O(N*W) and very slow.
+    # Disabling for now to fix performance freeze.
+    # team_stats['entropy_corners'] = grouped['corners'].transform(
+    #    lambda x: x.shift(1).rolling(window=10, min_periods=3).apply(calculate_entropy, raw=False)
+    # ).fillna(0.5)
+    team_stats['entropy_corners'] = 0.5 # Default neutral entropy
 
     # --- C. Médias ESPECÍFICAS (Home/Away) ---
     home_games = team_stats[team_stats['is_home'] == 1].sort_values(['team_id', 'start_timestamp'])
@@ -301,33 +306,45 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     )
     
     # 2. Média de escanteios quando PERDEU (histórico)
-    def avg_corners_when_result(group, result_type):
-        """Calcula média de escanteios em jogos com resultado específico."""
-        result = []
-        for idx in range(len(group)):
-            if idx == 0:
-                result.append(np.nan)
-                continue
-            
-            prev_games = group.iloc[:idx]
-            filtered = prev_games[prev_games['game_result'] == result_type]
-            
-            if len(filtered) >= 2:
-                result.append(filtered['corners'].tail(5).mean())
-            else:
-                result.append(np.nan)
+    # 2. Média de escanteios quando PERDEU (histórico)
+    # VECTORIZED OPTIMIZATION (No loop)
+    def calculate_conditional_avg(df_full, result_type):
+        """Calcula média condicional vetorizada (ex: média de corners nos últimos 5 jogos onde perdeu)."""
+        # Filtra apenas jogos do tipo desejado (ex: 'loss')
+        subset = df_full[df_full['game_result'] == result_type].copy()
+        subset = subset.sort_values(['team_id', 'start_timestamp'])
         
-        return pd.Series(result, index=group.index)
-    
-    # Corners quando perde (tendência a atacar mais ou menos?)
-    team_stats['avg_corners_when_losing'] = grouped.apply(
-        lambda g: avg_corners_when_result(g.sort_values('start_timestamp'), 'loss')
-    ).reset_index(level=0, drop=True)
+        # Calcula rolling mean nesse subset
+        subset['rolling_avg'] = subset.groupby('team_id')['corners'].transform(
+             lambda x: x.shift(1).rolling(window=5, min_periods=1).mean()
+        )
+        
+        # Merge back to full dataset via merge_asof (time-travel safe)
+        # Precisamos de 'asof' merge para pegar o valor mais recente 'as of' data do jogo atual
+        # Mas para simplificar e ser robusto:
+        # Vamos fazer um merge left on match_id? Não, porque o jogo atual pode não ser 'loss'.
+        # O que queremos é: Para o jogo atual (tempo T), qual era a 'rolling_avg' do subset 'loss' em tempo < T?
+        
+        # Estratégia simples: Forward Fill (ffill) dos valores calculados
+        # 1. Cria série vazia alinhada com df_full
+        # 2. Preenche com valores nos timestamps onde houve jogo 'loss'
+        # 3. Faz ffill por grupo
+        
+        res = df_full[['match_id', 'team_id', 'start_timestamp']].copy()
+        subset_vals = subset[['match_id', 'rolling_avg']]
+        
+        res = res.merge(subset_vals, on='match_id', how='left')
+        
+        # Propaga o último valor conhecido para frente (dentro do grupo de time)
+        res['rolling_avg'] = res.groupby('team_id')['rolling_avg'].ffill()
+        
+        return res['rolling_avg']
+
+    # Corners quando perde
+    team_stats['avg_corners_when_losing'] = calculate_conditional_avg(team_stats, 'loss')
     
     # Corners quando ganha
-    team_stats['avg_corners_when_winning'] = grouped.apply(
-        lambda g: avg_corners_when_result(g.sort_values('start_timestamp'), 'win')
-    ).reset_index(level=0, drop=True)
+    team_stats['avg_corners_when_winning'] = calculate_conditional_avg(team_stats, 'win')
     
     # Fillna com média geral
     team_stats['avg_corners_when_losing'] = team_stats['avg_corners_when_losing'].fillna(team_stats['avg_corners_general'])
@@ -362,10 +379,28 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     df_features['away_h2h_dominance'] = df_features['away_avg_corners_h2h'] - df_features['away_avg_corners_general']
     
     # Diferença de Momentum (Quem está em melhor fase?)
-    df_features['momentum_diff'] = df_features['home_trend_corners'] - df_features['away_trend_corners']
+    # Usamos avg_corners_general (EMA 5g) como proxy de força recente
+    df_features['momentum_diff'] = df_features['home_avg_corners_general'] - df_features['away_avg_corners_general']
     
     # Diferença de Cansaço
     df_features['rest_diff'] = df_features['home_rest_days'] - df_features['away_rest_days']
+    
+    # --- 7. Feature de Pressão (Pressure Ratio) - NOVO ---
+    # Mede a eficiência em converter pressão (chutes) em escanteios
+    df_features['home_pressure_ratio'] = df_features['home_avg_corners_general'] / (df_features['home_avg_shots_general'] + 1e-6)
+    df_features['away_pressure_ratio'] = df_features['away_avg_corners_general'] / (df_features['away_avg_shots_general'] + 1e-6)
+
+    # --- 8. QUANTITATIVE FEATURES V9 (Dangerous Attacks) ---
+    # DA Efficiency: Quantos Dangerous Attacks precisa para gerar 1 escanteio?
+    # Valor alto = ineficiente. Valor baixo = letal.
+    # Invertendo (Corners / DA) para que maior seja melhor
+    # Smooth de +1.0 para evitar explosão em casos de 0 ataques (dados faltantes)
+    df_features['home_da_efficiency'] = df_features['home_avg_corners_general'] / (df_features['home_avg_dangerous_attacks_general'] + 1.0)
+    df_features['away_da_efficiency'] = df_features['away_avg_corners_general'] / (df_features['away_avg_dangerous_attacks_general'] + 1.0)
+    
+    # Pressure Index V2: (DA + Shots) Agregados
+    df_features['home_pressure_index'] = df_features['home_avg_dangerous_attacks_general'] + (df_features['home_avg_shots_general'] * 2)
+    df_features['away_pressure_index'] = df_features['away_avg_dangerous_attacks_general'] + (df_features['away_avg_shots_general'] * 2)
     
     df_features['tournament_id'] = df_features['tournament_id'].astype('category')
     
@@ -413,7 +448,7 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     dynamic_features = []
     for w in [3, 5, 10, 20]:
         for team in ['home', 'away']:
-            for metric in ['corners', 'shots', 'goals', 'corners_conceded']:
+            for metric in ['corners', 'shots', 'goals', 'corners_conceded', 'dangerous_attacks']:
                  dynamic_features.append(f'{team}_avg_{metric}_{w}g')
                  dynamic_features.append(f'{team}_ema_{metric}_{w}g')
                  dynamic_features.append(f'{team}_std_{metric}_{w}g')
@@ -454,6 +489,13 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
         
         # V7 Features
         'home_desperation_index', 'away_desperation_index',
+        
+        # V8 Features (Pressure Ratio)
+        'home_pressure_ratio', 'away_pressure_ratio',
+        
+        # V9 Features (Quant)
+        'home_da_efficiency', 'away_da_efficiency',
+        'home_pressure_index', 'away_pressure_index',
     ]
     
     feature_columns = dynamic_features + static_features
@@ -467,7 +509,7 @@ def create_advanced_features(df: pd.DataFrame, window_short: int = 3, window_lon
     y = df_features['corners_home_ft'] + df_features['corners_away_ft']
     
     # Return full metadata df for odds/timestamps access
-    return X, y, df_features
+    return X, y, df_features['start_timestamp']
 
 def prepare_features_for_prediction(home_id, away_id, db_manager, window_long=5):
     """
@@ -495,6 +537,7 @@ def prepare_features_for_prediction(home_id, away_id, db_manager, window_long=5)
         'shots_ot_home_ft': 0, 'shots_ot_away_ft': 0,
         'home_score': 0, 'away_score': 0,
         'corners_home_ht': 0, 'corners_away_ht': 0,
+        'dangerous_attacks_home': 0, 'dangerous_attacks_away': 0,
         'tournament_id': last_tourn,
         'tournament_name': 'Prediction'
     }])

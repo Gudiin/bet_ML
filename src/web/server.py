@@ -455,6 +455,75 @@ def api_analyze_match():
     return jsonify({'status': 'started', 'match_id': match_id})
 
 
+
+def _fetch_live_statistics(match_id: int) -> dict:
+    """
+    Busca estatísticas em tempo real direto da API do SofaScore.
+    Usado para preencher a UI quando o jogo está AO VIVO.
+    """
+    try:
+        import requests
+        url = f"https://www.sofascore.com/api/v1/event/{match_id}/statistics"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://www.sofascore.com/'
+        }
+        resp = requests.get(url, headers=headers, timeout=5)
+        if resp.status_code != 200:
+            return {}
+            
+        data = resp.json()
+        if 'statistics' not in data:
+            return {}
+
+        stats = {}
+        
+        def get_val(groups, keywords, is_home):
+            for g in groups:
+                if 'statisticsItems' not in g: continue
+                for item in g['statisticsItems']:
+                    if any(k in item.get('name', '').lower() for k in keywords):
+                        val = item.get('home' if is_home else 'away')
+                        if val is None: return 0
+                        if isinstance(val, str) and '%' in val:
+                            return int(val.replace('%', ''))
+                        return int(val)
+            return 0
+
+        # Pega estatísticas do jogo todo (ALL) ou pelo menos do 1º tempo se ALL não existir
+        all_stats = next((p['groups'] for p in data['statistics'] if p['period'] == 'ALL'), [])
+        if not all_stats:
+             # Tenta 1st half se ALL não estiver disponível (comum em jogos muito recentes)
+             all_stats = next((p['groups'] for p in data['statistics'] if p['period'] == '1ST'), [])
+
+        stats['possession_home'] = get_val(all_stats, ['ball possession'], True)
+        stats['possession_away'] = get_val(all_stats, ['ball possession'], False)
+        
+        stats['corners_home_ft'] = get_val(all_stats, ['corner kicks'], True)
+        stats['corners_away_ft'] = get_val(all_stats, ['corner kicks'], False)
+        
+        stats['total_shots_home'] = get_val(all_stats, ['total shots'], True)
+        stats['total_shots_away'] = get_val(all_stats, ['total shots'], False)
+        
+        stats['shots_ot_home_ft'] = get_val(all_stats, ['shots on target'], True)
+        stats['shots_ot_away_ft'] = get_val(all_stats, ['shots on target'], False)
+        
+        # O frontend espera HT separado
+        ht_stats = next((p['groups'] for p in data['statistics'] if p['period'] == '1ST'), [])
+        if ht_stats:
+            stats['corners_home_ht'] = get_val(ht_stats, ['corner kicks'], True)
+            stats['corners_away_ht'] = get_val(ht_stats, ['corner kicks'], False)
+        else:
+             stats['corners_home_ht'] = 0
+             stats['corners_away_ht'] = 0
+
+        # Debug
+        print(f"Stats Live: H={stats['corners_home_ft']} A={stats['corners_away_ft']}")
+        return stats
+    except Exception as e:
+        print(f"Erro ao buscar stats ao vivo: {e}")
+        return {}
+
 @app.route('/api/match/result/<match_id>')
 def get_match_result(match_id: str):
     """Retorna resultado da análise de uma partida."""
@@ -498,73 +567,28 @@ def get_match_result(match_id: str):
     
     match_dict = match_info.iloc[0].to_dict()
     
-    # Para jogos ao vivo, busca minuto atualizado da API do SofaScore
-    if match_dict.get('status') == 'inprogress':
-        try:
-            import requests
-            api_url = f"https://www.sofascore.com/api/v1/event/{match_id}"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://www.sofascore.com/'
-            }
-            resp = requests.get(api_url, headers=headers, timeout=5)
-            if resp.status_code == 200:
-                ev = resp.json().get('event', {})
-                status_info = ev.get('status', {})
-                
-                # Tenta múltiplas fontes para o minuto
-                match_minute = None
-                
-                # 1. Status description (ex: "45+2", "HT", "78")
-                status_desc = status_info.get('description', '')
-                if status_desc and status_desc not in ['Not started', 'Ended', '']:
-                    match_minute = status_desc
-                
-                # 2. Se não encontrou, tenta calcular pelo tempo de início
-                if not match_minute and status_info.get('type') == 'inprogress':
-                    start_ts = ev.get('startTimestamp', 0)
-                    if start_ts > 0:
-                        import time
-                        elapsed_seconds = int(time.time()) - start_ts
-                        elapsed_minutes = elapsed_seconds // 60
-                        # Ajusta para o tempo do jogo (45 min por tempo + intervalo)
-                        if elapsed_minutes <= 45:
-                            match_minute = str(elapsed_minutes)
-                        elif elapsed_minutes <= 60:  # Intervalo
-                            match_minute = "HT"
-                        elif elapsed_minutes <= 105:
-                            match_minute = str(elapsed_minutes - 15)  # Remove tempo de intervalo
-                        else:
-                            match_minute = "90+"
-                
-                if match_minute:
-                    match_dict['match_minute'] = match_minute
-                    
-                    # Determina o período do jogo
-                    match_period = "Ao Vivo"
-                    if match_minute == 'HT':
-                        match_period = "Intervalo"
-                    else:
-                        # Tenta converter para inteiro para verificar se é 1T ou 2T
-                        try:
-                            minute_val = int(match_minute.split("'")[0].replace('+', ''))
-                            if minute_val <= 45 and "2nd" not in status_desc: # Simplificação
-                                match_period = "1º Tempo"
-                            elif minute_val > 45:
-                                match_period = "2º Tempo"
-                        except:
-                            pass
-                            
-                    match_dict['match_period'] = match_period
-                
-                # Atualiza placar em tempo real
-                match_dict['home_score'] = ev.get('homeScore', {}).get('display', match_dict.get('home_score', 0))
-                match_dict['away_score'] = ev.get('awayScore', {}).get('display', match_dict.get('away_score', 0))
-                
-                print(f"✅ Live data: {match_minute} | {match_dict['home_score']}-{match_dict['away_score']}")
-        except Exception as e:
-            print(f"Erro ao buscar minuto ao vivo: {e}")
+    # Prepara estatísticas finais (começa com DB, sobrescreve se Ao Vivo)
+    final_stats = stats.iloc[0].to_dict() if not stats.empty else {}
     
+    # 2b. Lógica simplificada (Via DB, sem API requests bloqueada)
+    match_minute = match_dict.get('match_minute')
+    if match_minute:
+        # Determina o período do jogo
+        match_period = "Ao Vivo"
+        if str(match_minute) == 'HT':
+            match_period = "Intervalo"
+        else:
+            try:
+                minute_val = int(str(match_minute).split("'")[0].replace('+', ''))
+                if minute_val <= 45 and "2nd" not in str(match_minute): 
+                    match_period = "1º Tempo"
+                elif minute_val > 45:
+                    match_period = "2º Tempo"
+            except:
+                pass
+                
+        match_dict['match_period'] = match_period
+        
     result = {
         'match': match_dict,
         'ml_prediction': ml_pred.iloc[0]['prediction_value'] if not ml_pred.empty else None,
@@ -573,10 +597,69 @@ def get_match_result(match_id: str):
         'ml_confidence': ml_pred.iloc[0]['confidence'] if not ml_pred.empty else None,
         'top7': top7.to_dict('records'),
         'suggestions': suggestions.to_dict('records'),
-        'stats': stats.iloc[0].to_dict() if not stats.empty else None
+        'stats': final_stats if final_stats else None
     }
     
     return jsonify(result)
+
+
+@app.route('/api/match/live_score/<match_id>')
+def get_live_score(match_id: str):
+    """
+    Endpoint leve para buscar APENAS placar e minuto em tempo real.
+    Usado para hidratar a lista de histórico sem travar o carregamento.
+    """
+    import requests
+    try:
+        api_url = f"https://www.sofascore.com/api/v1/event/{match_id}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://www.sofascore.com/'
+        }
+        # Timeout curto para não segurar conexão
+        resp = requests.get(api_url, headers=headers, timeout=2)
+        
+        if resp.status_code == 200:
+            ev = resp.json().get('event', {})
+            status_info = ev.get('status', {})
+            
+            # Minute logic similar to get_match_result
+            match_minute = None
+            status_desc = status_info.get('description', '')
+            if status_desc and status_desc not in ['Not started', 'Ended', '']:
+                match_minute = status_desc
+            
+            # Fallback calculation
+            if not match_minute and status_info.get('type') == 'inprogress':
+                start_ts = ev.get('startTimestamp', 0)
+                if start_ts > 0:
+                    import time
+                    elapsed_seconds = int(time.time()) - start_ts
+                    elapsed_minutes = elapsed_seconds // 60
+                    if elapsed_minutes <= 45:
+                        match_minute = str(elapsed_minutes)
+                    elif elapsed_minutes <= 60:
+                        match_minute = "HT"
+                    elif elapsed_minutes <= 105:
+                        match_minute = str(elapsed_minutes - 15)
+                    else:
+                        match_minute = "90+"
+            
+            home_score = ev.get('homeScore', {}).get('display', 0)
+            away_score = ev.get('awayScore', {}).get('display', 0)
+            
+            return jsonify({
+                'match_id': match_id,
+                'status': 'inprogress', # Assumindo que chamamos isso apenas para jogos que achamos q estão ao vivo
+                'minute': match_minute,
+                'home_score': home_score,
+                'away_score': away_score
+            })
+            
+    except Exception as e:
+        print(f"Erro no live_score para {match_id}: {e}")
+        
+    return jsonify({'error': 'Failed to fetch'}), 500
 
 
 @app.route('/api/scanner/start', methods=['POST'])
@@ -625,16 +708,17 @@ def get_analyses():
     conn = db.connect()
     
     query = """
-        SELECT DISTINCT 
+        SELECT 
             m.match_id,
+            m.tournament_name,
             m.home_team_name,
             m.away_team_name,
             m.home_score,
             m.away_score,
             m.status,
             m.start_timestamp,
-            (SELECT prediction_value FROM predictions WHERE match_id = m.match_id AND model_version IN ('ML', 'ML_V2') ORDER BY id DESC LIMIT 1) as ml_prediction,
-            (SELECT COUNT(*) FROM predictions WHERE match_id = m.match_id AND category = 'Top7') as num_predictions
+            (SELECT prediction_value FROM predictions WHERE match_id = m.match_id AND model_version IN ('ML_V2', 'ML') ORDER BY id DESC LIMIT 1) as ml_prediction,
+            (SELECT COUNT(*) FROM predictions WHERE match_id = m.match_id) as num_predictions
         FROM matches m
         WHERE EXISTS (SELECT 1 FROM predictions p WHERE p.match_id = m.match_id)
         ORDER BY m.start_timestamp DESC
@@ -655,32 +739,39 @@ def get_analyses():
         'Referer': 'https://www.sofascore.com/'
     })
     
+    # Removemos o loop síncrono que deixava a lista lenta.
+    # A lista de histórico deve ser rápida (apenas DB).
+    # Detalhes ao vivo ficam para a análise individual.
+
     for record in records:
+        # Minute Estimation Logic for Live Games
+        if record.get('status') == 'inprogress':
+            start_ts = record.get('start_timestamp', 0)
+            current_min = record.get('match_minute')
+            
+            # If minute is generic text ("2nd half", etc) or missing, calculate it
+            if not current_min or not any(char.isdigit() for char in str(current_min)) or "half" in str(current_min).lower():
+                import time
+                now = int(time.time())
+                diff_min = (now - start_ts) // 60
+                
+                estimated = None
+                if diff_min < 45:
+                    estimated = f"{diff_min}'"
+                elif diff_min < 60:
+                    estimated = "HT"
+                elif diff_min < 110:
+                    estimated = f"{45 + (diff_min - 60)}'"
+                else:
+                    estimated = "90+"
+                    
+                record['match_minute'] = estimated
+
         for key, value in record.items():
             if hasattr(value, 'item'):  # numpy int64/float64
                 record[key] = value.item()
             elif pd.isna(value):  # NaN to None
                 record[key] = None
-        
-        # Live Data Enhancement for accurate minutes
-        if record.get('status') == 'inprogress':
-            try:
-                # Short timeout to not block UI
-                resp = session.get(f"https://www.sofascore.com/api/v1/event/{record['match_id']}", timeout=1.5)
-                if resp.status_code == 200:
-                    ev = resp.json().get('event', {})
-                    status_info = ev.get('status', {})
-                    
-                    # Get Minute
-                    desc = status_info.get('description')
-                    if desc:
-                        record['match_minute'] = desc
-                        
-                    # Update Score
-                    record['home_score'] = ev.get('homeScore', {}).get('display', record['home_score'])
-                    record['away_score'] = ev.get('awayScore', {}).get('display', record['away_score'])
-            except Exception:
-                pass # Fail silently for live data
 
     return jsonify(records)
 
@@ -1175,8 +1266,44 @@ def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_his
             df_h_stats = prepare_team_df(home_games, home_id)
             df_a_stats = prepare_team_df(away_games, away_id)
 
+            # Extrai métricas avançadas (Moved Up)
+            advanced_metrics = {}
+            if not features_df.empty:
+                try:
+                    # Trend
+                    # advanced_metrics['home_trend'] = float(features_df['home_trend_corners'].iloc[0]) # DEPRECATED
+                    # advanced_metrics['away_trend'] = float(features_df['away_trend_corners'].iloc[0]) # DEPRECATED
+                    # Volatility
+                    advanced_metrics['home_avg_corners_general'] = float(features_df['home_avg_corners_general'].iloc[0]) # Momentum
+                    advanced_metrics['away_avg_corners_general'] = float(features_df['away_avg_corners_general'].iloc[0]) # Momentum
+                    advanced_metrics['home_volatility'] = float(features_df['home_std_corners_general'].iloc[0])
+                    advanced_metrics['away_volatility'] = float(features_df['away_std_corners_general'].iloc[0])
+                    # Attack Advantage
+                    advanced_metrics['home_attack_adv'] = float(features_df['home_attack_adv'].iloc[0])
+                    advanced_metrics['away_attack_adv'] = float(features_df['away_attack_adv'].iloc[0])
+                    
+                    # Full Metrics for Hybrid Lens
+                    advanced_metrics['home_avg_corners_home'] = float(features_df['home_avg_corners_home'].iloc[0])
+                    advanced_metrics['away_avg_corners_away'] = float(features_df['away_avg_corners_away'].iloc[0])
+                    advanced_metrics['home_avg_corners_conceded_home'] = float(features_df['home_avg_corners_conceded_home'].iloc[0])
+                    advanced_metrics['away_avg_corners_conceded_away'] = float(features_df['away_avg_corners_conceded_away'].iloc[0])
+                    advanced_metrics['home_avg_corners_h2h'] = float(features_df['home_avg_corners_h2h'].iloc[0])
+                    advanced_metrics['away_avg_corners_h2h'] = float(features_df['away_avg_corners_h2h'].iloc[0])
+
+                except Exception as e:
+                    print(f"Erro metrics: {e}")
+
+            # Extract Odds
+            scraped_odds = match_data.get('corner_odds', {})
+
             # Executa análise estatística
-            top_picks, suggestions = analyzer.analyze_match(df_h_stats, df_a_stats, ml_prediction=ml_prediction, match_name=f"{home_name} vs {away_name}")
+            top_picks, suggestions = analyzer.analyze_match(
+                df_h_stats, df_a_stats, 
+                ml_prediction=ml_prediction, 
+                match_name=f"{home_name} vs {away_name}",
+                advanced_metrics=advanced_metrics,
+                scraped_odds=scraped_odds
+            )
             
             # Helper para extrair valor da linha (ex: "Over 3.5" -> 3.5)
             def extract_line_value(label: str) -> float:
@@ -1198,22 +1325,6 @@ def _process_match_prediction(match_data: Dict[str, Any], predictor: Any, df_his
         # Não falha o processo todo se a estatística falhar, apenas loga
         print(f"Erro na análise estatística: {e}")
     
-    # Extrai métricas avançadas para o frontend
-    advanced_metrics = {}
-    try:
-        if not features_df.empty:
-            # Trend
-            advanced_metrics['home_trend'] = float(features_df['home_trend_corners'].iloc[0])
-            advanced_metrics['away_trend'] = float(features_df['away_trend_corners'].iloc[0])
-            # Volatility
-            advanced_metrics['home_volatility'] = float(features_df['home_std_corners_general'].iloc[0])
-            advanced_metrics['away_volatility'] = float(features_df['away_std_corners_general'].iloc[0])
-            # Attack Advantage
-            advanced_metrics['home_attack_adv'] = float(features_df['home_attack_adv'].iloc[0])
-            advanced_metrics['away_attack_adv'] = float(features_df['away_attack_adv'].iloc[0])
-    except Exception as e:
-        print(f"Erro ao extrair métricas avançadas: {e}")
-
     return {
         'match_name': f"{home_name} vs {away_name}",
         'ml_prediction': round(ml_prediction, 1),

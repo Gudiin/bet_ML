@@ -7,3 +7,4 @@ tabulate
 flask
 xgboost
 lightgbm
+requests

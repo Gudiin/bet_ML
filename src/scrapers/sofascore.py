@@ -259,7 +259,7 @@ class SofaScoreScraper:
         if not data or 'statistics' not in data:
             return stats
 
-        def extract_val(groups: list, keywords: list, is_home: bool, return_float: bool = False):
+        def extract_val(groups: list, keywords: list, is_home: bool, return_float: bool = False, extract_total: bool = False):
             if not groups:
                 return 0.0 if return_float else 0
             for g in groups:
@@ -272,13 +272,25 @@ class SofaScoreScraper:
                             try:
                                 value = item.get('home' if is_home else 'away')
                                 if value is not None:
+                                    # Handle "6/11 (55%)" format for Crosses, Duels, etc.
+                                    if isinstance(value, str) and '/' in value:
+                                        parts = value.split('/')
+                                        if extract_total:
+                                            # "11 (55%)" -> "11"
+                                            val_str = parts[1].strip().split(' ')[0]
+                                            return int(val_str)
+                                        else:
+                                            # "6"
+                                            return int(parts[0].strip())
+
                                     if isinstance(value, str) and '%' in value:
                                         return int(value.replace('%', ''))
+                                    
                                     if return_float:
                                         return float(value)
                                     else:
                                         return int(value)
-                            except (ValueError, TypeError):
+                            except (ValueError, TypeError, IndexError):
                                 return 0.0 if return_float else 0
             return 0.0 if return_float else 0
 
@@ -308,6 +320,30 @@ class SofaScoreScraper:
         stats['corners_away_ht'] = extract_val(ht_stats, ['corner kicks'], False)
         stats['shots_ot_home_ht'] = extract_val(ht_stats, ['shots on target'], True)
         stats['shots_ot_away_ht'] = extract_val(ht_stats, ['shots on target'], False)
+
+        # Dangerous Attacks (New Quant Feature)
+        stats['dangerous_attacks_home'] = extract_val(all_stats, ['dangerous attacks', 'ataques perigosos'], True)
+        stats['dangerous_attacks_away'] = extract_val(all_stats, ['dangerous attacks', 'ataques perigosos'], False)
+        
+        # Tactical Metrics (Gap Analysis)
+        stats['blocked_shots_home'] = extract_val(all_stats, ['blocked shots', 'chutes travados'], True)
+        stats['blocked_shots_away'] = extract_val(all_stats, ['blocked shots', 'chutes travados'], False)
+        
+        # Crosses: Extract TOTAL attempted crosses (denominator) for volume/pressure analysis
+        stats['crosses_home'] = extract_val(all_stats, ['crosses', 'cruzamentos'], True, extract_total=True)
+        stats['crosses_away'] = extract_val(all_stats, ['crosses', 'cruzamentos'], False, extract_total=True)
+        
+        stats['tackles_home'] = extract_val(all_stats, ['tackles', 'desarmes', 'total tackles'], True)
+        stats['tackles_away'] = extract_val(all_stats, ['tackles', 'desarmes', 'total tackles'], False)
+        
+        stats['interceptions_home'] = extract_val(all_stats, ['interceptions', 'interceptações'], True)
+        stats['interceptions_away'] = extract_val(all_stats, ['interceptions', 'interceptações'], False)
+        
+        stats['clearances_home'] = extract_val(all_stats, ['clearances', 'cortes'], True)
+        stats['clearances_away'] = extract_val(all_stats, ['clearances', 'cortes'], False)
+        
+        stats['recoveries_home'] = extract_val(all_stats, ['recoveries', 'bolas recuperadas'], True)
+        stats['recoveries_away'] = extract_val(all_stats, ['recoveries', 'bolas recuperadas'], False)
 
         return stats
 
@@ -345,8 +381,64 @@ class SofaScoreScraper:
             'away_id': ev['awayTeam']['id'],
             'away_name': ev['awayTeam']['name'],
             'home_score': ev.get('homeScore', {}).get('display', 0),
-            'away_score': ev.get('awayScore', {}).get('display', 0)
+            'away_score': ev.get('awayScore', {}).get('display', 0),
+            'odds_home': 0.0,
+            'odds_draw': 0.0,
+            'odds_away': 0.0
         }
+        
+        # --- ZERO-COST ODDS SCRAPER (Improved) ---
+        # Tenta extrair odds do campo 'winningOdds' ou equivalente
+        if 'winningOdds' in data:
+             wo = data['winningOdds'] # {home: X, draw: Y, away: Z}
+             # Às vezes vem como lista ou dict. 
+             # Estrutura esperada: [{'choice': 'home', 'fractionalValue': ..., 'decimalValue': ...}, ...]
+             # Mas a API pública simplificada pode variar. Vamos verificar 'vote' stats se winOdds falhar.
+             pass
+             
+        # Tenta buscar odds padrão do evento (API v1)
+        # Url dedicada de odds pode ser necessária, mas tente extraction direta
+        # Estrutura típica: ev['customId'] é chave para odds provider?
+        # Vamos tentar um endpoint específico de odds SE não tiver no main.
+        # "https://www.sofascore.com/api/v1/event/{id}/odds/1/all" (1=Decimal)
+        
+        try:
+             odds_url = f"https://www.sofascore.com/api/v1/event/{match_id}/odds/1/all"
+             odds_data = self._fetch_api(odds_url)
+             if odds_data and 'markets' in odds_data:
+                  # Procura mercado Winner (Full Time) e Corners
+                  for market in odds_data['markets']:
+                       m_name = market.get('marketName', '')
+                       
+                       # 1X2
+                       if m_name == 'Full time':
+                            for choice in market.get('choices', []):
+                                 if choice['name'] == '1':
+                                      ret['odds_home'] = float(choice['fractionalValue'].split('/')[0])/float(choice['fractionalValue'].split('/')[1]) + 1
+                                 elif choice['name'] == 'X':
+                                      ret['odds_draw'] = float(choice['fractionalValue'].split('/')[0])/float(choice['fractionalValue'].split('/')[1]) + 1
+                                 elif choice['name'] == '2':
+                                      ret['odds_away'] = float(choice['fractionalValue'].split('/')[0])/float(choice['fractionalValue'].split('/')[1]) + 1
+                       
+                       # Corners (Total)
+                       # A API geralmente chama de "Total corners" ou "Corners"
+                       elif 'corners' in m_name.lower() or 'escanteios' in m_name.lower():
+                            if 'corner_odds' not in ret:
+                                ret['corner_odds'] = {}
+                            
+                            # Logica para Over/Under
+                            # Choices geralmente é [{'name': 'Over 9.5', ...}, {'name': 'Under 9.5', ...}]
+                            for choice in market.get('choices', []):
+                                 c_name = choice['name'] # Ex: "Over 9.5"
+                                 try:
+                                      odd_val = float(choice['fractionalValue'].split('/')[0])/float(choice['fractionalValue'].split('/')[1]) + 1
+                                      ret['corner_odds'][c_name] = odd_val
+                                 except:
+                                      pass
+        except Exception:
+             pass # Falha silenciosa se não tiver odds (pré-live distante)
+
+        return ret
 
     def get_standings(self, tournament_id: int, season_id: int) -> dict:
         """Busca a tabela de classificação (Total). Retorna ditado {team_id: position}."""

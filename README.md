@@ -1,127 +1,91 @@
-# 🤖 Sistema de Previsão de Escanteios (Professional v8.0 Next Gen)
+# 🤖 Sistema de Previsão de Futebol (Professional v9.0)
 
-> **Versão 8.0 - "Next Gen"**  
-> _Transfer Learning + Ensemble + Odds Reais + Multi-League_
+> **Versão 9.0 - "A Definitiva"**
+> *Banco de Dados Unificado + IA Híbrida + Proteção Anti-Falhas*
 
-Sistema profissional de Machine Learning para previsão de escanteios (futebol), projetado para encontrar **Valor Esperado (+EV)** real usando IA avançada e odds históricas.
-
----
-
-## 🎯 O Que Mudou na v8.0? (Next Gen)
-
-A v8.0 representa um salto quântico na arquitetura do projeto. Saímos de análises estatísticas puras para um sistema de IA híbrida treinado com dados da elite europeia.
-
-| Tecnologia      | Antes (v7.0)            | **Agora (v8.0 Next Gen)**                                      |
-| :-------------- | :---------------------- | :------------------------------------------------------------- |
-| **Arquitetura** | Modelo Único (LightGBM) | **Ensemble Híbrido** (LightGBM + CatBoost + Linear)            |
-| **Aprendizado** | Treinamento Padrão      | **Transfer Learning** (Global Model ➔ Fine-Tuning por Liga)    |
-| **Validação**   | Backtest Estatístico    | **ROI Real** usando Odds Históricas (Bet365/Pinnacle)          |
-| **Features**    | Janelas Estáticas       | **Janelas Dinâmicas** (3, 5, 10, 20 jogos) + Posição Histórica |
-| **Escopo**      | Foco Brasil             | **Multi-League** (Premier League, LaLiga, Serie A, etc.)       |
+Este é um software profissional que usa Inteligência Artificial para encontrar **oportunidades de valor** em apostas de escanteios. Ele não "chuta" resultados; ele analisa matematicamente milhares de jogos passados para calcular a probabilidade real do que vai acontecer hoje.
 
 ---
 
-## 🏗️ Arquitetura do Sistema
+## 💡 O Que Há de Novo? (Para Leigos)
 
-```mermaid
-graph TD
-    A[SofaScore API] -->|Stats| C(Feature Engineering V2)
-    B[Football-Data.co.uk] -->|Odds Históricas| C
+Imagine que você contratou um analista que nunca dorme e assistiu a **todos** os jogos das principais ligas da Europa nos últimos 3 anos. É isso que o sistema faz.
 
-    C --> D{Modelagem Híbrida}
-
-    subgraph "Cérebro da IA (Ensemble)"
-    D --> E[Global Model]
-    E --> F[LightGBM (Velocidade)]
-    E --> G[CatBoost (Precisão)]
-    E --> H[Linear Regression (Tendência)]
-    end
-
-    D --> I{Transfer Learning}
-    I -->|Ligas Grandes >100| J[Fine-Tuning Específico]
-    I -->|Ligas Pequenas| K[Usa Global Model]
-
-    J --> L[Previsão Final]
-    K --> L
-
-    L --> M[Scanner de Oportunidades]
-    M --> N[Relatório +EV]
-```
+A versão 9.0 traz correções cruciais:
+1.  **Memória Completa:** O sistema agora lembra de **tudo** o que aconteceu na temporada 2025/26 (Agosto a Dezembro). Antes, ele tinha um "branco" nesses meses. Agora, a memória é fotográfica.
+2.  **Organização Automática:** Se os dados vierem bagunçados da internet (ex: nomes de ligas diferentes), o sistema arruma sozinho antes de salvar. Você não precisa fazer nada.
+3.  **IA Mais Esperta:** Novos cálculos que consideram "Ataques Perigosos" e não apenas chutes a gol.
 
 ---
 
-## 🧠 Inteligência Artificial
+## 🚀 Como Usar (Passo a Passo)
 
-O sistema utiliza uma abordagem de **Stacking Ensemble** com calibração automática:
+Para ter as melhores previsões, siga este ritual simples:
 
-1.  **LightGBM (Tweedie)**: Captura a não-linearidade e picos de escanteios (ex: jogos com 15+ cantos).
-2.  **CatBoost**: Excelente para lidar com features categóricas e evitar overfitting em datasets menores.
-3.  **Regressão Linear**: Fornece uma base sólida e captura tendências de longo prazo.
+### Passo 1: Atualizar o Cérebro 🧠
+_Faça isso 1 vez por semana (ex: Sexta-feira)_
+*   Abra o menu principal.
+*   Escolha a **Opção 9 (Atualizar Todas as Ligas)**.
+*   O sistema vai baixar todos os jogos que aconteceram desde a última vez.
 
-### Transfer Learning
+### Passo 2: Ensinar a IA 🎓
+_Faça isso logo depois de atualizar_
+*   Escolha a **Opção 2 (Treinar Modelo)**.
+*   A IA vai "ler" os jogos novos que você baixou e ajustar suas previsões. Se um time mudou de tática recentemente, a IA aprende agora.
 
-A IA aprende "futebol" observando 4.000+ jogos da Premier League, LaLiga e Serie A.
-
-- **Fase 1 (Global):** Aprende padrões universais (ex: time perdendo ataca mais).
-- **Fase 2 (Fine-Tuning):** Ajusta os detalhes para cada campeonato (ex: Brasileirão tem mais faltas, Premier League é mais rápida).
-
----
-
-## 📊 Métricas de Performance (Validado em 4.000 Jogos)
-
-Resultados baseados em **Validação Cruzada Temporal (Time Series Split)** usando odds reais de fechamento:
-
-| Métrica              | Performance           | Significado                                   |
-| :------------------- | :-------------------- | :-------------------------------------------- |
-| **MAE** (Erro Médio) | **~2.6 - 2.8**        | A IA erra, em média, menos de 3 escanteios.   |
-| **ROI** (Retorno)    | **+14% a +18%**       | Lucro consistente simulando apostas em valor. |
-| **Cobertura**        | **Top 5 Europa + BR** | Testado nas ligas mais difíceis do mundo.     |
-
-> **Nota:** O ROI é calculado apenas em situações onde a IA detecta uma discrepância significativa entre a probabilidade calculada e a Odd da casa (Value Bet).
+### Passo 3: Lucrar (O Scanner) 💰
+_Faça isso no dia dos jogos_
+*   Escolha a **Opção 7 (Scanner)**.
+*   O sistema vai ler a lista de jogos de Hoje/Amanhã.
+*   Ele vai te dar um relatório:
+    *   🟢 **APOSTA VERDE:** A IA acredita que a chance de acontecer é muito maior do que a Casa de Aposta imagina (Valor).
+    *   🔴 **SEM VALOR:** A odd não compensa o risco.
 
 ---
 
-## 📦 Instalação e Uso
+## 🏆 O Que o Sistema Cobre?
 
-### 1. Instalação
+Focamos na elite do futebol, onde os dados são mais confiáveis:
+*   🏴󠁧󠁢󠁥󠁮󠁧󠁿 **Premier League** (Inglaterra)
+*   🇪🇸 **La Liga** (Espanha)
+*   🇩🇪 **Bundesliga** (Alemanha)
+*   🇮🇹 **Serie A** (Itália)
+*   🇫🇷 **Ligue 1** (França)
+
+*(Todos os dados estão 100% atualizados e verificados até Dezembro de 2025)*
+
+---
+
+## ⚙️ Instalação (Técnico)
+
+Se você está instalando do zero:
 
 ```bash
+# 1. Baixar o código
 git clone https://github.com/seu-usuario/projeto-bet.git
 cd projeto-bet
+
+# 2. Instalar dependências
 pip install -r requirements.txt
-```
 
-### 2. Executar o Sistema
+# 3. Rodar
 
-```bash
+## Modo Texto (Terminal)
 python src/main.py
+
+## Modo Web (Interface Gráfica)
+python run_web.py --port 6000
+# Acesse no navegador: http://localhost:6000
 ```
 
-### 3. Menu Principal
-
-1.  **Atualizar Base**: Baixa dados recentes (SofaScore).
-2.  **Treinar Modelo (New)**: Executa o pipeline v8 (Optuna + Transfer Learning).
-3.  **Scanner de Oportunidades**:
-    - **Opção 7**: Varre jogos de Hoje, Amanhã ou Data Específica.
-    - Analisa probabilidades vs Odds reais.
-    - Indica **Verde** (Aposta Segura) ou **Vermelho** (Sem Valor).
-
 ---
 
-## 📂 Estrutura de Pastas (Atualizada)
+## ⚠️ Aviso Importante
 
-- `src/ml/model_v2.py`: O novo cérebro (Ensemble + Transfer Learning).
-- `src/ml/features_v2.py`: Engenharia de features dinâmica.
-- `src/data/external`: Gerenciadores de Odds externas (Football-Data).
-- `src/scrapers`: Coleta de estatísticas (SofaScore).
-- `data/football_data.db`: Banco SQLite unificado (Stats + Odds).
-
----
-
-## ⚠️ Disclaimer
-
-Apostas esportivas envolvem alto risco. Este software é uma ferramenta de **análise estatística** e não garante lucros futuros. O ROI passado não é garantia de ROI futuro. Use com responsabilidade.
+Este software é uma ferramenta de **apoio à decisão**.
+*   A IA mostra **probabilidades**, não certezas.
+*   A responsabilidade final da aposta é **sua**.
+*   Use com sabedoria (Gestão de Banca).
 
 ---
-
-**Desenvolvido com Python 3.12 + LightGBM + CatBoost**
+**Desenvolvido com Tecnologia de Ponta (Python + LightGBM + CatBoost)**
